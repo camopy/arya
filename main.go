@@ -2,9 +2,15 @@ package main
 
 import (
 	"errors"
+	"fmt"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"log"
+	"net/http"
 	"os"
 	"strconv"
 )
+
+const metricsServerAddr = "0.0.0.0:9091"
 
 type Config struct {
 	RedisURI  string
@@ -16,6 +22,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	go startMetricsServer()
 	db := NewRedis(cfg.RedisURI)
 	bot := NewBot(db, cfg.BotConfig)
 	bot.Start()
@@ -60,4 +67,13 @@ func lookupEnv(key string) (string, error) {
 		return "", errors.New("missing env var " + key)
 	}
 	return v, nil
+}
+
+func startMetricsServer() {
+	var mux http.ServeMux
+	mux.Handle("/metrics", promhttp.Handler())
+	log.Printf("starting metrics server %s", fmt.Sprintf("http://%s/metrics", metricsServerAddr))
+	if err := http.ListenAndServe(metricsServerAddr, &mux); err != nil {
+		log.Fatalf("failed to start metrics server: %v", err)
+	}
 }

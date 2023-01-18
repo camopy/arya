@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/prometheus/client_golang/prometheus"
 	"log"
 	"net/http"
 	"strconv"
@@ -11,13 +12,36 @@ import (
 )
 
 const (
-	name            = "hacker_news"
+	hackerNews      = "hacker_news"
 	fetchInterval   = 30 * time.Minute
 	topStoriesLimit = 20
 
 	topStoriesEndpoint = "https://hacker-news.firebaseio.com/v0/topstories.json"
 	storyEndpoint      = "https://hacker-news.firebaseio.com/v0/item/%d.json"
 )
+
+var hackerNewsMetrics = struct {
+	storiesLoadedTotal *prometheus.GaugeVec
+	loadStoriesTotal   *prometheus.CounterVec
+}{
+	storiesLoadedTotal: NewGaugeVec(
+		hackerNews,
+		"stories_loaded_total",
+		"Total number of stories loaded",
+		[]string{},
+	),
+	loadStoriesTotal: NewCounterVec(
+		hackerNews,
+		"load_stories_total",
+		"Total number of load stories requests",
+		[]string{},
+	),
+}
+
+func trackLoadedStories(storiesLoaded int) {
+	hackerNewsMetrics.storiesLoadedTotal.WithLabelValues().Set(float64(storiesLoaded))
+	hackerNewsMetrics.loadStoriesTotal.WithLabelValues().Inc()
+}
 
 type HackerNews struct {
 	*http.Client
@@ -72,17 +96,18 @@ func (h *HackerNews) fetch(ctx context.Context) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		err = h.db.Put(ctx, fmt.Sprintf("%s:%s", name, strconv.Itoa(id)), value)
+		err = h.db.Put(ctx, fmt.Sprintf("%s:%s", hackerNews, strconv.Itoa(id)), value)
 		if err != nil {
 			return nil, err
 		}
 		stories = append(stories, s)
 	}
+	trackLoadedStories(len(stories))
 	return stories, nil
 }
 
 func (h *HackerNews) isDuplicateStory(ctx context.Context, id string) (bool, error) {
-	s, err := h.db.Get(ctx, fmt.Sprintf("%s:%s", name, id))
+	s, err := h.db.Get(ctx, fmt.Sprintf("%s:%s", hackerNews, id))
 	if err != nil && !h.db.IsErrNotFound(err) {
 		return false, err
 	}
@@ -90,11 +115,14 @@ func (h *HackerNews) isDuplicateStory(ctx context.Context, id string) (bool, err
 }
 
 func (h *HackerNews) fetchTopStoriesIds() ([]int, error) {
+	start := time.Now()
 	resp, err := h.Get(topStoriesEndpoint)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
+
+	trackExternalRequest(http.MethodGet, resp.Request.RequestURI, resp.StatusCode, time.Since(start))
 
 	var ids []int
 	if err := json.NewDecoder(resp.Body).Decode(&ids); err != nil {
@@ -117,11 +145,14 @@ type Story struct {
 }
 
 func (h *HackerNews) fetchStory(id int) (*Story, error) {
+	start := time.Now()
 	resp, err := h.Get(fmt.Sprintf(storyEndpoint, id))
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
+
+	trackExternalRequest(http.MethodGet, resp.Request.RequestURI, resp.StatusCode, time.Since(start))
 
 	var s Story
 	if err := json.NewDecoder(resp.Body).Decode(&s); err != nil {

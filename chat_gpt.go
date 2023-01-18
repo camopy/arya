@@ -3,11 +3,23 @@ package main
 import (
 	"context"
 	"fmt"
-
+	"github.com/prometheus/client_golang/prometheus"
 	gogpt "github.com/sashabaranov/go-gpt3"
 )
 
 var defaultPrompt = "The following is a conversation with an AI assistant. The assistant is helpful, creative, clever, and very friendly.\n\nPaulo Camopy: Hello, who are you?\nAI: I am an AI created by OpenAI. How can I help you today?\n\nPaulo Camopy: %s\nAI:"
+
+var chatGPTMetrics = struct {
+	completionRequestsDuration *prometheus.HistogramVec
+}{
+	completionRequestsDuration: NewHistogramVec(
+		subsystem,
+		"chatgpt_completion_request_duration_seconds",
+		"Duration of completion request in seconds",
+		[]string{},
+		prometheus.DefBuckets,
+	),
+}
 
 type ChatGPT struct {
 	*gogpt.Client
@@ -37,6 +49,7 @@ func (c *ChatGPT) StartChatGPT() {
 }
 
 func (c *ChatGPT) ask(prompt string) (string, error) {
+	defer trackCompletionRequestDuration()()
 	req := gogpt.CompletionRequest{
 		Model:     gogpt.GPT3TextDavinci003,
 		Prompt:    fmt.Sprintf(defaultPrompt, prompt),
@@ -54,4 +67,8 @@ func (c *ChatGPT) ask(prompt string) (string, error) {
 
 func (c *ChatGPT) Ask(prompt string) {
 	c.promptCh <- prompt
+}
+
+func trackCompletionRequestDuration() (stop func()) {
+	return trackDuration(chatGPTMetrics.completionRequestsDuration.WithLabelValues().Observe)
 }
