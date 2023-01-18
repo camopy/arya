@@ -122,7 +122,7 @@ func (h *HackerNews) fetchTopStoriesIds() ([]int, error) {
 	}
 	defer resp.Body.Close()
 
-	trackExternalRequest(http.MethodGet, resp.Request.RequestURI, resp.StatusCode, time.Since(start))
+	trackExternalRequest(http.MethodGet, resp.Request.URL.Host, resp.StatusCode, time.Since(start))
 
 	var ids []int
 	if err := json.NewDecoder(resp.Body).Decode(&ids); err != nil {
@@ -152,7 +152,7 @@ func (h *HackerNews) fetchStory(id int) (*Story, error) {
 	}
 	defer resp.Body.Close()
 
-	trackExternalRequest(http.MethodGet, resp.Request.RequestURI, resp.StatusCode, time.Since(start))
+	trackExternalRequest(http.MethodGet, resp.Request.URL.Host, resp.StatusCode, time.Since(start))
 
 	var s Story
 	if err := json.NewDecoder(resp.Body).Decode(&s); err != nil {

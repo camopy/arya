@@ -92,7 +92,7 @@ func (f *CryptoFeed) fetchCoin(coinId string) (*Coin, error) {
 	}
 	defer resp.Body.Close()
 
-	trackExternalRequest(http.MethodGet, resp.Request.RequestURI, resp.StatusCode, time.Since(start))
+	trackExternalRequest(http.MethodGet, resp.Request.URL.Host, resp.StatusCode, time.Since(start))
 
 	type coinResp struct {
 		Id         string `json:"id"`
