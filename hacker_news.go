@@ -94,7 +94,7 @@ func (h *HackerNews) fetchTopStoriesIds() ([]int, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close().Error()
+	defer resp.Body.Close()
 
 	var ids []int
 	if err := json.NewDecoder(resp.Body).Decode(&ids); err != nil {
@@ -121,7 +121,7 @@ func (h *HackerNews) fetchStory(id int) (*Story, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close().Error()
+	defer resp.Body.Close()
 
 	var s Story
 	if err := json.NewDecoder(resp.Body).Decode(&s); err != nil {
