@@ -11,11 +11,12 @@ type Redis struct {
 }
 
 func NewRedis(addr string) DB {
+	opt, err := redis.ParseURL(addr)
+	if err != nil {
+		panic(err)
+	}
 	return &Redis{
-		client: redis.NewClient(&redis.Options{
-			Addr: addr,
-			DB:   0,
-		}),
+		client: redis.NewClient(opt),
 	}
 }
 

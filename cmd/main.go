@@ -8,25 +8,34 @@ import (
 	"github.com/camopy/rss_everything/database"
 )
 
+type Config struct {
+	RedisURI  string
+	BotConfig rss.Config
+}
+
 func main() {
-	db := database.NewRedis("localhost:17379")
 	cfg, err := parseFlags()
 	if err != nil {
 		panic(err)
 	}
-	bot := rss.NewBot(db, cfg)
+	db := database.NewRedis(cfg.RedisURI)
+	bot := rss.NewBot(db, cfg.BotConfig)
 	bot.Start()
 }
 
-func parseFlags() (rss.Config, error) {
-	cfg := rss.Config{}
-	flag.StringVar(&cfg.TelegramApiKey, "telegram.api-key", "", "Telegram API key")
-	flag.StringVar(&cfg.ChatGPTApiKey, "chatgpt.api-key", "", "ChatGPT API key")
+func parseFlags() (Config, error) {
+	cfg := Config{}
+	flag.StringVar(&cfg.RedisURI, "redis.uri", "", "Redis URI (redis://host:post/db)")
+	flag.StringVar(&cfg.BotConfig.TelegramApiKey, "telegram.api-key", "", "Telegram API key")
+	flag.StringVar(&cfg.BotConfig.ChatGPTApiKey, "chatgpt.api-key", "", "ChatGPT API key")
 	flag.Parse()
-	if cfg.TelegramApiKey == "" {
+	if cfg.RedisURI == "" {
+		return cfg, errors.New("missing redis addr")
+	}
+	if cfg.BotConfig.TelegramApiKey == "" {
 		return cfg, errors.New("missing telegram api key")
 	}
-	if cfg.ChatGPTApiKey == "" {
+	if cfg.BotConfig.ChatGPTApiKey == "" {
 		return cfg, errors.New("missing chatgpt api key")
 	}
 	return cfg, nil
