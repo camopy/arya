@@ -1,4 +1,4 @@
-package networks
+package main
 
 import (
 	"context"
@@ -6,10 +6,6 @@ import (
 
 	gogpt "github.com/sashabaranov/go-gpt3"
 )
-
-type ChatGPTConfig struct {
-	ApiKey string
-}
 
 var defaultPrompt = "The following is a conversation with an AI assistant. The assistant is helpful, creative, clever, and very friendly.\n\nPaulo Camopy: Hello, who are you?\nAI: I am an AI created by OpenAI. How can I help you today?\n\nPaulo Camopy: %s\nAI:"
 

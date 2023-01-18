@@ -1,4 +1,4 @@
-package networks
+package main
 
 import (
 	"context"
@@ -8,8 +8,6 @@ import (
 	"net/http"
 	"strconv"
 	"time"
-
-	"github.com/camopy/rss_everything/database"
 )
 
 const (
@@ -23,11 +21,11 @@ const (
 
 type HackerNews struct {
 	*http.Client
-	db        database.DB
+	db        DB
 	contentCh chan []string
 }
 
-func NewHackerNews(contentCh chan []string, db database.DB) *HackerNews {
+func NewHackerNews(contentCh chan []string, db DB) *HackerNews {
 	return &HackerNews{
 		Client:    http.DefaultClient,
 		db:        db,
@@ -96,7 +94,7 @@ func (h *HackerNews) fetchTopStoriesIds() ([]int, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close().Error()
 
 	var ids []int
 	if err := json.NewDecoder(resp.Body).Decode(&ids); err != nil {
@@ -123,7 +121,7 @@ func (h *HackerNews) fetchStory(id int) (*Story, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close().Error()
 
 	var s Story
 	if err := json.NewDecoder(resp.Body).Decode(&s); err != nil {

@@ -1,34 +1,27 @@
-package trss
+package main
 
 import (
-	"github.com/camopy/rss_everything/database"
-	"github.com/camopy/rss_everything/networks"
 	"log"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-const (
-	startCommand   = "start"
-	chatGPTCommand = "chatgpt"
-)
-
-type Config struct {
+type BotConfig struct {
+	ChatId         int
 	TelegramApiKey string
 	ChatGPTApiKey  string
 }
 
 type Bot struct {
-	cfg          Config
+	cfg          BotConfig
 	client       *tgbotapi.BotAPI
-	db           database.DB
-	chatId       int64
+	db           DB
 	contentsChan chan []string
-	chatGPT      *networks.ChatGPT
-	hackerNews   *networks.HackerNews
+	chatGPT      *ChatGPT
+	hackerNews   *HackerNews
 }
 
-func NewBot(db database.DB, cfg Config) *Bot {
+func NewBot(db DB, cfg BotConfig) *Bot {
 	api, err := tgbotapi.NewBotAPI(cfg.TelegramApiKey)
 	if err != nil {
 		log.Panic(err)
@@ -49,9 +42,12 @@ func (b *Bot) Start() {
 	b.handleMessages()
 }
 
-func (b *Bot) initFeeds(cfg Config) {
-	b.chatGPT = networks.NewChatGPT(b.contentsChan, cfg.ChatGPTApiKey)
-	b.hackerNews = networks.NewHackerNews(b.contentsChan, b.db)
+func (b *Bot) initFeeds(cfg BotConfig) {
+	b.chatGPT = NewChatGPT(b.contentsChan, cfg.ChatGPTApiKey)
+	b.hackerNews = NewHackerNews(b.contentsChan, b.db)
+
+	go b.hackerNews.StartHackerNews()
+	go b.chatGPT.StartChatGPT()
 }
 
 func (b *Bot) handleContentUpdates() {
@@ -59,7 +55,7 @@ func (b *Bot) handleContentUpdates() {
 		select {
 		case contents := <-b.contentsChan:
 			for _, c := range contents {
-				msg := tgbotapi.NewMessage(b.chatId, c)
+				msg := tgbotapi.NewMessage(int64(b.cfg.ChatId), c)
 				_, err := b.client.Send(msg)
 				if err != nil {
 					log.Println(err)
@@ -74,19 +70,14 @@ func (b *Bot) handleMessages() {
 	u.Timeout = 60
 	updates := b.client.GetUpdatesChan(u)
 	for update := range updates {
-		if update.Message != nil && update.Message.IsCommand() {
-			b.handleCommand(update.Message)
+		if update.Message != nil && b.isValidChatId(update.Message.Chat.ID) {
+			if !update.Message.IsCommand() {
+				b.chatGPT.Ask(update.Message.Text)
+			}
 		}
 	}
 }
 
-func (b *Bot) handleCommand(msg *tgbotapi.Message) {
-	switch msg.Command() {
-	case startCommand:
-		b.chatId = msg.Chat.ID
-		go b.hackerNews.StartHackerNews()
-		go b.chatGPT.StartChatGPT()
-	case chatGPTCommand:
-		go b.chatGPT.Ask(msg.Text)
-	}
+func (b *Bot) isValidChatId(id int64) bool {
+	return id == int64(b.cfg.ChatId)
 }
