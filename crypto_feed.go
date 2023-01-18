@@ -64,7 +64,7 @@ func (cs Coins) String() string {
 	var sb strings.Builder
 	for _, c := range cs {
 		sb.WriteString(c.String())
-		sb.WriteString("\n")
+		sb.WriteString("\n\n")
 	}
 	return sb.String()
 }
