@@ -58,6 +58,12 @@ func decodeEnv() (*Config, error) {
 	}
 	cfg.BotConfig.ChatGPTApiKey = chatGPTApiKey
 
+	chatGPTUserName, err := lookupEnv("CHATGPT_USER_NAME")
+	if err != nil {
+		return nil, err
+	}
+	cfg.BotConfig.ChatGPTUserName = chatGPTUserName
+
 	return cfg, nil
 }
 

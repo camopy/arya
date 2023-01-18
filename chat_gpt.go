@@ -7,7 +7,7 @@ import (
 	gogpt "github.com/sashabaranov/go-gpt3"
 )
 
-var defaultPrompt = "The following is a conversation with an AI assistant. The assistant is helpful, creative, clever, and very friendly.\n\nPaulo Camopy: Hello, who are you?\nAI: I am an AI created by OpenAI. How can I help you today?\n\nPaulo Camopy: %s\nAI:"
+var defaultPrompt = "The following is a conversation with an AI assistant. The assistant is helpful, creative, clever, and very friendly.\n\n%s: Hello, who are you?\nAI: I am an AI created by OpenAI. How can I help you today?\n\n%s: %s\nAI:"
 
 var chatGPTMetrics = struct {
 	completionRequestsDuration *prometheus.HistogramVec
@@ -23,15 +23,19 @@ var chatGPTMetrics = struct {
 
 type ChatGPT struct {
 	*gogpt.Client
-	contentCh chan []string
-	promptCh  chan string
+	userName      string
+	contentCh     chan []string
+	promptCh      chan string
+	defaultPrompt string
 }
 
-func NewChatGPT(contentCh chan []string, apiKey string) *ChatGPT {
+func NewChatGPT(contentCh chan []string, apiKey string, userName string) *ChatGPT {
 	return &ChatGPT{
-		Client:    gogpt.NewClient(apiKey),
-		contentCh: contentCh,
-		promptCh:  make(chan string),
+		Client:        gogpt.NewClient(apiKey),
+		userName:      userName,
+		contentCh:     contentCh,
+		promptCh:      make(chan string),
+		defaultPrompt: fmt.Sprintf(defaultPrompt, userName, userName, "%s"),
 	}
 }
 
@@ -52,11 +56,11 @@ func (c *ChatGPT) ask(prompt string) (string, error) {
 	defer trackCompletionRequestDuration()()
 	req := gogpt.CompletionRequest{
 		Model:     gogpt.GPT3TextDavinci003,
-		Prompt:    fmt.Sprintf(defaultPrompt, prompt),
+		Prompt:    fmt.Sprintf(c.defaultPrompt, prompt),
 		MaxTokens: 200,
 		//Temperature: 0,
-		Stop: []string{"AI:", "Paulo Camopy:"},
-		User: "Paulo Camopy",
+		Stop: []string{"AI:", fmt.Sprintf("%s:", c.userName)},
+		User: c.userName,
 	}
 	resp, err := c.CreateCompletion(context.Background(), req)
 	if err != nil {

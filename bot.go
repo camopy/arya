@@ -7,9 +7,10 @@ import (
 )
 
 type BotConfig struct {
-	ChatId         int
-	TelegramApiKey string
-	ChatGPTApiKey  string
+	ChatId          int
+	TelegramApiKey  string
+	ChatGPTApiKey   string
+	ChatGPTUserName string
 }
 
 type Bot struct {
@@ -44,7 +45,7 @@ func (b *Bot) Start() {
 }
 
 func (b *Bot) initFeeds(cfg BotConfig) {
-	b.chatGPT = NewChatGPT(b.contentsChan, cfg.ChatGPTApiKey)
+	b.chatGPT = NewChatGPT(b.contentsChan, cfg.ChatGPTApiKey, cfg.ChatGPTUserName)
 	b.hackerNews = NewHackerNews(b.contentsChan, b.db)
 	b.cryptoFeed = NewCryptoFeed(b.contentsChan)
 
