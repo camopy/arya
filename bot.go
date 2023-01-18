@@ -19,6 +19,7 @@ type Bot struct {
 	contentsChan chan []string
 	chatGPT      *ChatGPT
 	hackerNews   *HackerNews
+	cryptoFeed   *CryptoFeed
 }
 
 func NewBot(db DB, cfg BotConfig) *Bot {
@@ -45,9 +46,11 @@ func (b *Bot) Start() {
 func (b *Bot) initFeeds(cfg BotConfig) {
 	b.chatGPT = NewChatGPT(b.contentsChan, cfg.ChatGPTApiKey)
 	b.hackerNews = NewHackerNews(b.contentsChan, b.db)
+	b.cryptoFeed = NewCryptoFeed(b.contentsChan)
 
 	go b.hackerNews.StartHackerNews()
 	go b.chatGPT.StartChatGPT()
+	go b.cryptoFeed.StartCryptoFeed()
 }
 
 func (b *Bot) handleContentUpdates() {
