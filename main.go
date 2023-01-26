@@ -64,6 +64,30 @@ func decodeEnv() (*Config, error) {
 	}
 	cfg.BotConfig.ChatGPTUserName = chatGPTUserName
 
+	redditClientId, err := lookupEnv("REDDIT_CLIENT_ID")
+	if err != nil {
+		return nil, err
+	}
+	cfg.BotConfig.RedditClientId = redditClientId
+
+	redditApiKey, err := lookupEnv("REDDIT_API_KEY")
+	if err != nil {
+		return nil, err
+	}
+	cfg.BotConfig.RedditApiKey = redditApiKey
+
+	redditUsername, err := lookupEnv("REDDIT_USERNAME")
+	if err != nil {
+		return nil, err
+	}
+	cfg.BotConfig.RedditUsername = redditUsername
+
+	redditPassword, err := lookupEnv("REDDIT_PASSWORD")
+	if err != nil {
+		return nil, err
+	}
+	cfg.BotConfig.RedditPassword = redditPassword
+
 	return cfg, nil
 }
 

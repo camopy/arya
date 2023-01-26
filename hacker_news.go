@@ -46,14 +46,16 @@ func trackLoadedStories(storiesLoaded int) {
 type HackerNews struct {
 	*http.Client
 	db        DB
-	contentCh chan []string
+	contentCh chan []Content
+	threadId  int
 }
 
-func NewHackerNews(contentCh chan []string, db DB) *HackerNews {
+func NewHackerNews(contentCh chan []Content, db DB, threadId int) *HackerNews {
 	return &HackerNews{
 		Client:    http.DefaultClient,
 		db:        db,
 		contentCh: contentCh,
+		threadId:  threadId,
 	}
 }
 
@@ -69,12 +71,12 @@ func (h *HackerNews) StartHackerNews() {
 	}
 }
 
-func (h *HackerNews) fetch(ctx context.Context) ([]string, error) {
+func (h *HackerNews) fetch(ctx context.Context) ([]Content, error) {
 	ids, err := h.fetchTopStoriesIds()
 	if err != nil {
 		return nil, err
 	}
-	stories := make([]string, 0, topStoriesLimit)
+	stories := make([]Content, 0, topStoriesLimit)
 	i := 0
 	for i < len(ids) && i < topStoriesLimit {
 		id := ids[i]
@@ -100,7 +102,10 @@ func (h *HackerNews) fetch(ctx context.Context) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		stories = append(stories, s)
+		stories = append(stories, Content{
+			text:     s,
+			threadId: h.threadId,
+		})
 	}
 	trackLoadedStories(len(stories))
 	return stories, nil

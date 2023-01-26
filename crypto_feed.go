@@ -33,11 +33,12 @@ var trackedCoins = []string{
 
 type CryptoFeed struct {
 	client    *http.Client
-	contentCh chan []string
+	contentCh chan []Content
+	threadId  int
 }
 
-func NewCryptoFeed(contentCh chan []string) *CryptoFeed {
-	return &CryptoFeed{client: http.DefaultClient, contentCh: contentCh}
+func NewCryptoFeed(contentCh chan []Content, threadId int) *CryptoFeed {
+	return &CryptoFeed{client: http.DefaultClient, contentCh: contentCh, threadId: threadId}
 }
 
 func (f *CryptoFeed) StartCryptoFeed() {
@@ -52,7 +53,12 @@ func (f *CryptoFeed) StartCryptoFeed() {
 			}
 		}
 		if len(coins) > 0 {
-			f.contentCh <- []string{Coins(coins).String()}
+			f.contentCh <- []Content{
+				{
+					text:     Coins(coins).String(),
+					threadId: f.threadId,
+				},
+			}
 		}
 		time.Sleep(cryptoFetchInterval)
 	}

@@ -24,17 +24,17 @@ var chatGPTMetrics = struct {
 type ChatGPT struct {
 	*gogpt.Client
 	userName      string
-	contentCh     chan []string
-	promptCh      chan string
+	contentCh     chan []Content
+	promptCh      chan Content
 	defaultPrompt string
 }
 
-func NewChatGPT(contentCh chan []string, apiKey string, userName string) *ChatGPT {
+func NewChatGPT(contentCh chan []Content, apiKey string, userName string) *ChatGPT {
 	return &ChatGPT{
 		Client:        gogpt.NewClient(apiKey),
 		userName:      userName,
 		contentCh:     contentCh,
-		promptCh:      make(chan string),
+		promptCh:      make(chan Content),
 		defaultPrompt: fmt.Sprintf(defaultPrompt, userName, userName, "%s"),
 	}
 }
@@ -43,11 +43,16 @@ func (c *ChatGPT) StartChatGPT() {
 	for {
 		select {
 		case prompt := <-c.promptCh:
-			resp, err := c.ask(prompt)
+			resp, err := c.ask(prompt.text)
 			if err != nil {
 				fmt.Println(err)
 			}
-			c.contentCh <- []string{resp}
+			c.contentCh <- []Content{
+				{
+					text:     resp,
+					threadId: prompt.threadId,
+				},
+			}
 		}
 	}
 }
@@ -58,9 +63,8 @@ func (c *ChatGPT) ask(prompt string) (string, error) {
 		Model:     gogpt.GPT3TextDavinci003,
 		Prompt:    fmt.Sprintf(c.defaultPrompt, prompt),
 		MaxTokens: 200,
-		//Temperature: 0,
-		Stop: []string{"AI:", fmt.Sprintf("%s:", c.userName)},
-		User: c.userName,
+		Stop:      []string{"AI:", fmt.Sprintf("%s:", c.userName)},
+		User:      c.userName,
 	}
 	resp, err := c.CreateCompletion(context.Background(), req)
 	if err != nil {
@@ -69,7 +73,7 @@ func (c *ChatGPT) ask(prompt string) (string, error) {
 	return resp.Choices[0].Text, nil
 }
 
-func (c *ChatGPT) Ask(prompt string) {
+func (c *ChatGPT) Ask(prompt Content) {
 	c.promptCh <- prompt
 }
 
