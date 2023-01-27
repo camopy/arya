@@ -6,44 +6,25 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/turnage/graw/reddit"
 )
 
 const (
-	redditFetchInterval = 1 * time.Hour
-	redditFetchLimit    = 10
+	redditFetchLimit         = 10
+	redditSubscriptionsTable = "reddit:subscriptions:"
 )
 
-var subreddits = []string{
-	"/r/golang",
-	"/r/investimentos",
-	"/r/bitcoin",
-	"/r/blockchaindeveloper",
-	"/r/BogleheadsBrasil",
-	"/r/coding",
-	"/r/cruiserboarding",
-	"/r/CryptoCurrency",
-	"/r/CryptoTechnology",
-	"/r/ethdev",
-	"/r/ethereum",
-	"/r/ExperiencedDevs",
-	"/r/RepublicaDasCapivaras",
-	"/r/SideProject",
-	"/r/Sorare",
-	"/r/startups",
-}
-
 type Reddit struct {
-	client     reddit.Bot
-	db         DB
-	subreddits []string
-	contentCh  chan []Content
-	threadId   int
+	client        reddit.Bot
+	db            DB
+	subscriptions []redditSubscription
+	contentCh     chan []Content
 }
 
-func NewReddit(contentCh chan []Content, db DB, id string, key string, username string, password string, threadId int) *Reddit {
+func NewReddit(contentCh chan []Content, db DB, id string, key string, username string, password string) *Reddit {
 	cfg := reddit.BotConfig{
 		Agent: "rss_feed:1:0.1 (by /u/BurnInNoia)",
 		App: reddit.App{
@@ -60,29 +41,138 @@ func NewReddit(contentCh chan []Content, db DB, id string, key string, username 
 	}
 
 	return &Reddit{
-		client:     bot,
-		subreddits: subreddits,
-		db:         db,
-		contentCh:  contentCh,
-		threadId:   threadId,
+		client:    bot,
+		db:        db,
+		contentCh: contentCh,
 	}
 }
 
-func (u *Reddit) StartReddit() {
+func (u *Reddit) HandleCommand(ctx context.Context, cmd command) error {
+	c, err := u.parseCommand(cmd)
+	if err != nil {
+		return err
+	}
+	switch c.name {
+	case "add":
+		err = u.add(ctx, c)
+	}
+	return err
+}
+
+type redditCommand struct {
+	threadId  int
+	name      string
+	subreddit string
+	interval  time.Duration
+	args      []string
+}
+
+func (u *Reddit) parseCommand(cmd command) (*redditCommand, error) {
+	s := strings.Split(cmd.text, " ")
+	if len(s) < 2 {
+		return nil, fmt.Errorf("reddit: invalid command")
+	}
+	c := &redditCommand{
+		threadId:  cmd.threadId,
+		name:      s[0],
+		subreddit: s[1],
+	}
+	if len(s) > 2 {
+		interval, err := strconv.Atoi(s[2])
+		if err != nil {
+			return nil, fmt.Errorf("reddit: invalid interval")
+		}
+		c.interval = time.Duration(interval) * time.Minute
+	}
+	if len(s) > 3 {
+		c.args = s[3:]
+	}
+	return c, nil
+}
+
+type redditSubscription struct {
+	Subreddit string        `json:"subreddit"`
+	Interval  time.Duration `json:"interval"`
+	ThreadId  int           `json:"thread_id"`
+}
+
+func (u *Reddit) add(ctx context.Context, c *redditCommand) error {
+	if !strings.HasPrefix(c.subreddit, "/r/") {
+		c.subreddit = "/r/" + c.subreddit
+	}
+
+	sub := &redditSubscription{
+		Subreddit: c.subreddit,
+		Interval:  c.interval,
+		ThreadId:  c.threadId,
+	}
+	u.saveSubscription(ctx, sub)
+	go u.poll(ctx, *sub)
+	return nil
+}
+
+func (u *Reddit) saveSubscription(ctx context.Context, sub *redditSubscription) error {
+	b, err := json.Marshal(sub)
+	if err != nil {
+		return err
+	}
+	err = u.db.Add(ctx, redditSubscriptionsTable, b)
+	if err != nil {
+		return err
+	}
+	u.subscriptions = append(u.subscriptions, *sub)
+	return nil
+}
+
+func (u *Reddit) getSubscriptions(ctx context.Context) ([]redditSubscription, error) {
+	b, err := u.db.List(ctx, redditSubscriptionsTable)
+	if err != nil {
+		return nil, err
+	}
+	var subs []redditSubscription
+	for _, v := range b {
+		var sub redditSubscription
+		err = json.Unmarshal([]byte(v), &sub)
+		if err != nil {
+			return nil, err
+		}
+		subs = append(subs, sub)
+	}
+	return subs, nil
+}
+
+func (u *Reddit) StartReddit(ctx context.Context) {
+	subs, err := u.getSubscriptions(ctx)
+	if err != nil && !u.db.IsErrNotFound(err) {
+		panic(err)
+	}
+	u.subscriptions = subs
+	for _, sub := range subs {
+		go u.poll(ctx, sub)
+	}
+}
+
+func (u *Reddit) poll(ctx context.Context, sub redditSubscription) {
+	fetch := func(ctx context.Context, sub redditSubscription) {
+		posts, err := u.fetch(ctx, sub)
+		if err != nil {
+			fmt.Println(err)
+		} else if len(posts) > 0 {
+			u.contentCh <- posts
+		}
+	}
+	fetch(ctx, sub)
+
+	ticker := time.NewTicker(sub.Interval)
+	defer ticker.Stop()
+
 	for {
-		contents := make([]Content, 0, redditFetchLimit*len(u.subreddits))
-		for _, subreddit := range u.subreddits {
-			posts, err := u.fetch(subreddit)
-			if err != nil {
-				fmt.Println(err)
-			} else if len(posts) > 0 {
-				contents = append(contents, posts...)
-			}
+		select {
+		case <-ticker.C:
+			fetch(ctx, sub)
+		case <-ctx.Done():
+			return
 		}
-		if len(contents) > 0 {
-			u.contentCh <- contents
-		}
-		time.Sleep(redditFetchInterval)
 	}
 }
 
@@ -105,14 +195,14 @@ https://www.reddit.com%s
 	`, p.Subreddit, p.Title, p.Score, p.URL, p.Permalink)
 }
 
-func (u *Reddit) fetch(subreddit string) ([]Content, error) {
-	harvest, err := u.client.ListingWithParams(subreddit, map[string]string{
+func (u *Reddit) fetch(ctx context.Context, sub redditSubscription) ([]Content, error) {
+	harvest, err := u.client.ListingWithParams(sub.Subreddit, map[string]string{
 		"limit": strconv.Itoa(redditFetchLimit),
 	})
 	if err != nil {
 		return nil, err
 	}
-	posts := make([]Content, 0, redditFetchLimit*len(u.subreddits))
+	posts := make([]Content, 0, redditFetchLimit)
 	for _, post := range harvest.Posts {
 		p := redditPost{
 			ID:         post.ID,
@@ -124,7 +214,7 @@ func (u *Reddit) fetch(subreddit string) ([]Content, error) {
 			Subreddit:  post.Subreddit,
 		}
 
-		isNewPost, err := u.isNewPost(context.Background(), p)
+		isNewPost, err := u.isNewPost(ctx, p)
 		if err != nil {
 			return nil, err
 		}
@@ -132,12 +222,12 @@ func (u *Reddit) fetch(subreddit string) ([]Content, error) {
 			continue
 		}
 
-		if err := u.savePost(context.Background(), p); err != nil {
+		if err := u.savePost(ctx, p); err != nil {
 			return nil, err
 		}
 
 		posts = append(posts, Content{
-			threadId: u.threadId,
+			threadId: sub.ThreadId,
 			text:     p.String(),
 		})
 	}
@@ -154,7 +244,7 @@ func (u *Reddit) isNewPost(ctx context.Context, post redditPost) (bool, error) {
 }
 
 func (u *Reddit) isDuplicatePost(ctx context.Context, id string) (bool, error) {
-	s, err := u.db.Get(ctx, fmt.Sprintf("%s:%s", "reddit", id))
+	s, err := u.db.Get(ctx, fmt.Sprintf("%s:%s", "reddit:posts", id))
 	if err != nil && !u.db.IsErrNotFound(err) {
 		return false, err
 	}
@@ -171,5 +261,5 @@ func (u *Reddit) savePost(ctx context.Context, post redditPost) error {
 	if err != nil {
 		return err
 	}
-	return u.db.Put(ctx, fmt.Sprintf("%s:%s", "reddit", post.ID), value)
+	return u.db.Set(ctx, fmt.Sprintf("%s:%s", "reddit:posts", post.ID), value, 7*24*time.Hour)
 }

@@ -98,7 +98,7 @@ func (h *HackerNews) fetch(ctx context.Context) ([]Content, error) {
 		if err != nil {
 			return nil, err
 		}
-		err = h.db.Put(ctx, fmt.Sprintf("%s:%s", hackerNews, strconv.Itoa(id)), value)
+		err = h.db.Set(ctx, fmt.Sprintf("%s:%s", hackerNews, strconv.Itoa(id)), value, 24*7*time.Hour)
 		if err != nil {
 			return nil, err
 		}

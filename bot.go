@@ -13,7 +13,6 @@ import (
 const (
 	hackerNewsThreadId = 6
 	cryptoThreadId     = 9
-	redditThreadId     = 452
 )
 
 type BotConfig struct {
@@ -36,7 +35,7 @@ type Bot struct {
 	chatGPT      *ChatGPT
 	hackerNews   *HackerNews
 	cryptoFeed   *CryptoFeed
-	rssFeed      *Reddit
+	reddit       *Reddit
 }
 
 type Content struct {
@@ -75,22 +74,23 @@ func (b *Bot) Start() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
-	b.initFeeds(b.cfg)
 	go b.handleFeedUpdates(ctx)
-	go b.handleMessages()
+	go b.handleMessages(ctx)
+
+	b.initFeeds(ctx, b.cfg)
 	b.client.Start(ctx)
 }
 
-func (b *Bot) initFeeds(cfg BotConfig) {
+func (b *Bot) initFeeds(ctx context.Context, cfg BotConfig) {
 	b.chatGPT = NewChatGPT(b.contentsChan, cfg.ChatGPTApiKey, cfg.ChatGPTUserName)
 	b.hackerNews = NewHackerNews(b.contentsChan, b.db, hackerNewsThreadId)
 	b.cryptoFeed = NewCryptoFeed(b.contentsChan, cryptoThreadId)
-	b.rssFeed = NewReddit(b.contentsChan, b.db, cfg.RedditClientId, cfg.RedditApiKey, cfg.RedditUsername, cfg.RedditPassword, redditThreadId)
+	b.reddit = NewReddit(b.contentsChan, b.db, cfg.RedditClientId, cfg.RedditApiKey, cfg.RedditUsername, cfg.RedditPassword)
 
 	go b.hackerNews.StartHackerNews()
 	go b.chatGPT.StartChatGPT()
 	go b.cryptoFeed.StartCryptoFeed()
-	go b.rssFeed.StartReddit()
+	go b.reddit.StartReddit(ctx)
 }
 
 func (b *Bot) handleFeedUpdates(ctx context.Context) {
@@ -113,7 +113,7 @@ func (b *Bot) handleFeedUpdates(ctx context.Context) {
 	}
 }
 
-func (b *Bot) handleMessages() {
+func (b *Bot) handleMessages(ctx context.Context) {
 	isCommand := func(m *models.Message) bool {
 		if m.Entities == nil || len(m.Entities) == 0 {
 			return false
@@ -123,7 +123,14 @@ func (b *Bot) handleMessages() {
 	}
 
 	for update := range b.updatesCh {
-		if update.Message == nil || isCommand(update.Message) {
+		if update.Message == nil {
+			continue
+		}
+		if !b.isValidChatId(update.Message.Chat.ID) {
+			continue
+		}
+		if isCommand(update.Message) {
+			b.handleCommand(ctx, update)
 			continue
 		}
 		b.chatGPT.Ask(Content{
@@ -135,4 +142,27 @@ func (b *Bot) handleMessages() {
 
 func (b *Bot) isValidChatId(id int64) bool {
 	return id == int64(b.cfg.ChatId)
+}
+
+type command struct {
+	name     string
+	chatId   int64
+	threadId int
+	text     string
+}
+
+func (b *Bot) handleCommand(ctx context.Context, update *models.Update) {
+	cmd := command{
+		name:     update.Message.Text[:update.Message.Entities[0].Length],
+		chatId:   update.Message.Chat.ID,
+		threadId: update.Message.MessageThreadID,
+		text:     update.Message.Text[update.Message.Entities[0].Length+1:],
+	}
+	switch cmd.name {
+	case "/reddit":
+		err := b.reddit.HandleCommand(ctx, cmd)
+		if err != nil {
+			log.Println(err)
+		}
+	}
 }
