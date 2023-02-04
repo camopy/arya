@@ -55,6 +55,10 @@ func (u *Reddit) HandleCommand(ctx context.Context, cmd command) error {
 	switch c.name {
 	case "add":
 		err = u.add(ctx, c)
+	case "list":
+		err = u.list(ctx, c)
+	case "remove":
+		err = u.remove(ctx, c)
 	}
 	return err
 }
@@ -69,28 +73,33 @@ type redditCommand struct {
 
 func (u *Reddit) parseCommand(cmd command) (*redditCommand, error) {
 	s := strings.Split(cmd.text, " ")
-	if len(s) < 2 {
-		return nil, fmt.Errorf("reddit: invalid command")
-	}
+
 	c := &redditCommand{
-		threadId:  cmd.threadId,
-		name:      s[0],
-		subreddit: s[1],
+		threadId: cmd.threadId,
+		name:     s[0],
 	}
-	if len(s) > 2 {
-		interval, err := strconv.Atoi(s[2])
-		if err != nil {
-			return nil, fmt.Errorf("reddit: invalid interval")
+
+	if len(s) > 1 {
+		c.subreddit = s[1]
+
+		if len(s) > 2 {
+			interval, err := strconv.Atoi(s[2])
+			if err != nil {
+				return nil, fmt.Errorf("reddit: invalid interval")
+			}
+			c.interval = time.Duration(interval) * time.Minute
+
+			if len(s) > 3 {
+				c.args = s[3:]
+			}
 		}
-		c.interval = time.Duration(interval) * time.Minute
 	}
-	if len(s) > 3 {
-		c.args = s[3:]
-	}
+
 	return c, nil
 }
 
 type redditSubscription struct {
+	Id        string        `json:"id"`
 	Subreddit string        `json:"subreddit"`
 	Interval  time.Duration `json:"interval"`
 	ThreadId  int           `json:"thread_id"`
@@ -106,7 +115,9 @@ func (u *Reddit) add(ctx context.Context, c *redditCommand) error {
 		Interval:  c.interval,
 		ThreadId:  c.threadId,
 	}
-	u.saveSubscription(ctx, sub)
+	if err := u.saveSubscription(ctx, sub); err != nil {
+		return err
+	}
 	go u.poll(ctx, *sub)
 	return nil
 }
@@ -124,21 +135,68 @@ func (u *Reddit) saveSubscription(ctx context.Context, sub *redditSubscription) 
 	return nil
 }
 
+func (u *Reddit) list(ctx context.Context, c *redditCommand) error {
+	subs, err := u.getSubscriptions(ctx)
+	if err != nil {
+		return err
+	}
+	if len(subs) == 0 {
+		u.contentCh <- []Content{
+			{
+				threadId: c.threadId,
+				text:     "No subscriptions",
+			},
+		}
+		return nil
+	}
+	var msg string
+	for _, sub := range subs {
+		msg += fmt.Sprintf("%s: %s\n", sub.Subreddit, sub.Interval)
+	}
+	u.contentCh <- []Content{
+		{
+			threadId: c.threadId,
+			text:     msg,
+		},
+	}
+	return nil
+}
+
 func (u *Reddit) getSubscriptions(ctx context.Context) ([]redditSubscription, error) {
 	b, err := u.db.List(ctx, redditSubscriptionsTable)
 	if err != nil {
 		return nil, err
 	}
 	var subs []redditSubscription
-	for _, v := range b {
+	for id, v := range b {
 		var sub redditSubscription
 		err = json.Unmarshal([]byte(v), &sub)
 		if err != nil {
 			return nil, err
 		}
+		sub.Id = id
 		subs = append(subs, sub)
 	}
 	return subs, nil
+}
+
+func (u *Reddit) remove(ctx context.Context, cmd *redditCommand) error {
+	for _, sub := range u.subscriptions {
+		if sub.Subreddit == cmd.subreddit {
+			err := u.db.Del(ctx, redditSubscriptionsTable, sub.Id)
+			if err != nil {
+				return err
+			}
+			u.contentCh <- []Content{
+				{
+					threadId: cmd.threadId,
+					text:     fmt.Sprintf("reddit: removed %s", cmd.subreddit),
+				},
+			}
+			return nil
+		}
+	}
+	return nil
 }
 
 func (u *Reddit) StartReddit(ctx context.Context) {
@@ -187,12 +245,18 @@ type redditPost struct {
 }
 
 func (p redditPost) String() string {
+	redditURL := fmt.Sprintf("https://www.reddit.com%s", p.Permalink)
+	var links string
+	if p.URL == redditURL {
+		links = p.URL
+	} else {
+		links = fmt.Sprintf(`%s
+
+%s`, p.URL, redditURL)
+	}
 	return fmt.Sprintf(`/r/%s 
 %s - ⬆️%d
-%s
-
-https://www.reddit.com%s
-	`, p.Subreddit, p.Title, p.Score, p.URL, p.Permalink)
+%s`, p.Subreddit, p.Title, p.Score, links)
 }
 
 func (u *Reddit) fetch(ctx context.Context, sub redditSubscription) ([]Content, error) {

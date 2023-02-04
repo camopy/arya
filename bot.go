@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -152,12 +153,14 @@ type command struct {
 }
 
 func (b *Bot) handleCommand(ctx context.Context, update *models.Update) {
+	entity := update.Message.Entities[0]
 	cmd := command{
-		name:     update.Message.Text[:update.Message.Entities[0].Length],
+		name:     update.Message.Text[:entity.Length],
 		chatId:   update.Message.Chat.ID,
 		threadId: update.Message.MessageThreadID,
-		text:     update.Message.Text[update.Message.Entities[0].Length+1:],
+		text:     strings.Trim(update.Message.Text[entity.Length:], " "),
 	}
+
 	switch cmd.name {
 	case "/reddit":
 		err := b.reddit.HandleCommand(ctx, cmd)

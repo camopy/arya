@@ -37,6 +37,10 @@ func (r *Redis) List(ctx context.Context, key string) (map[string]string, error)
 	return r.client.HGetAll(ctx, key).Result()
 }
 
+func (r *Redis) Del(ctx context.Context, key string, id string) error {
+	return r.client.HDel(ctx, key, id).Err()
+}
+
 func (r *Redis) IsErrNotFound(err error) bool {
 	return err == redis.Nil
 }
