@@ -11,24 +11,23 @@ import (
 )
 
 const (
-	cryptoFetchInterval        = 15 * time.Minute
-	cryptoPriceChangeThreshold = 1.0
+	cryptoFetchInterval = 15 * time.Minute
 )
 
 var coinEndpoint = "https://api.coingecko.com/api/v3/coins/%s?localization=false&community_data=false&developer_data=false"
 
-var trackedCoins = []string{
-	"bitcoin",
-	"ethereum",
-	"binancecoin",
-	"avalanche-2",
-	"matic-network",
-	"aave",
-	"chainlink",
-	"solana",
-	"uniswap",
-	"cosmos",
-	"cardano",
+var trackedCoins = map[string]float64{
+	"bitcoin":       1.0,
+	"ethereum":      1.0,
+	"binancecoin":   3.0,
+	"avalanche-2":   3.0,
+	"matic-network": 3.0,
+	"aave":          3.0,
+	"chainlink":     3.0,
+	"solana":        3.0,
+	"uniswap":       3.0,
+	"cosmos":        3.0,
+	"cardano":       3.0,
 }
 
 type CryptoFeed struct {
@@ -44,11 +43,11 @@ func NewCryptoFeed(contentCh chan []Content, threadId int) *CryptoFeed {
 func (f *CryptoFeed) StartCryptoFeed() {
 	for {
 		var coins = make([]Coin, 0, len(trackedCoins))
-		for _, coinId := range trackedCoins {
+		for coinId, threshold := range trackedCoins {
 			coin, err := f.fetchCoin(coinId)
 			if err != nil {
 				log.Println(err)
-			} else if math.Abs(coin.PriceChange1h) > cryptoPriceChangeThreshold {
+			} else if math.Abs(coin.PriceChange1h) > threshold {
 				coins = append(coins, *coin)
 			}
 		}
