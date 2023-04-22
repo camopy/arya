@@ -37,6 +37,7 @@ type Bot struct {
 	hackerNews   *HackerNews
 	cryptoFeed   *CryptoFeed
 	reddit       *Reddit
+	rss          *RSS
 }
 
 type Content struct {
@@ -87,11 +88,13 @@ func (b *Bot) initFeeds(ctx context.Context, cfg BotConfig) {
 	b.hackerNews = NewHackerNews(b.contentsChan, b.db, hackerNewsThreadId)
 	b.cryptoFeed = NewCryptoFeed(b.contentsChan, cryptoThreadId)
 	b.reddit = NewReddit(b.contentsChan, b.db, cfg.RedditClientId, cfg.RedditApiKey, cfg.RedditUsername, cfg.RedditPassword)
+	b.rss = NewRSS(b.contentsChan, b.db)
 
 	go b.hackerNews.StartHackerNews()
 	go b.chatGPT.StartChatGPT()
 	go b.cryptoFeed.StartCryptoFeed()
 	go b.reddit.StartReddit(ctx)
+	go b.rss.StartRSS(ctx)
 }
 
 func (b *Bot) handleFeedUpdates(ctx context.Context) {
@@ -164,6 +167,11 @@ func (b *Bot) handleCommand(ctx context.Context, update *models.Update) {
 	switch cmd.name {
 	case "/reddit":
 		err := b.reddit.HandleCommand(ctx, cmd)
+		if err != nil {
+			log.Println(err)
+		}
+	case "/rss":
+		err := b.rss.HandleCommand(ctx, cmd)
 		if err != nil {
 			log.Println(err)
 		}
