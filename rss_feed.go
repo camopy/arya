@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	db2 "github.com/camopy/rss_everything/db"
 	"github.com/camopy/rss_everything/zaplog"
 	"github.com/mmcdole/gofeed"
 	"go.uber.org/zap"
@@ -20,12 +21,12 @@ const (
 type RSS struct {
 	client        *gofeed.Parser
 	logger        *zaplog.Logger
-	db            DB
+	db            db2.DB
 	subscriptions []rssSubscription
 	contentCh     chan []Content
 }
 
-func NewRSS(logger *zaplog.Logger, contentCh chan []Content, db DB) *RSS {
+func NewRSS(logger *zaplog.Logger, contentCh chan []Content, db db2.DB) *RSS {
 	return &RSS{
 		client:    gofeed.NewParser(),
 		logger:    logger,

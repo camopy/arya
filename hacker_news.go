@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	db2 "github.com/camopy/rss_everything/db"
 	"github.com/camopy/rss_everything/zaplog"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
@@ -48,12 +49,12 @@ func trackLoadedStories(storiesLoaded int) {
 type HackerNews struct {
 	*http.Client
 	logger    *zaplog.Logger
-	db        DB
+	db        db2.DB
 	contentCh chan []Content
 	threadId  int
 }
 
-func NewHackerNews(logger *zaplog.Logger, contentCh chan []Content, db DB, threadId int) *HackerNews {
+func NewHackerNews(logger *zaplog.Logger, contentCh chan []Content, db db2.DB, threadId int) *HackerNews {
 	return &HackerNews{
 		Client:    http.DefaultClient,
 		logger:    logger,

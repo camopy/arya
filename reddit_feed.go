@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	db2 "github.com/camopy/rss_everything/db"
 	"github.com/camopy/rss_everything/zaplog"
 	"go.uber.org/zap"
 	"net/http"
@@ -22,12 +23,12 @@ const (
 type Reddit struct {
 	client        reddit.Bot
 	logger        *zaplog.Logger
-	db            DB
+	db            db2.DB
 	subscriptions []redditSubscription
 	contentCh     chan []Content
 }
 
-func NewReddit(logger *zaplog.Logger, contentCh chan []Content, db DB, id string, key string, username string, password string) *Reddit {
+func NewReddit(logger *zaplog.Logger, contentCh chan []Content, db db2.DB, id string, key string, username string, password string) *Reddit {
 	cfg := reddit.BotConfig{
 		Agent: "rss_feed:1:0.1 (by /u/BurnInNoia)",
 		App: reddit.App{
@@ -158,7 +159,6 @@ func (u *Reddit) list(ctx context.Context, c *redditCommand) error {
 	for _, sub := range subs {
 		msg += fmt.Sprintf("%s: %s\n", sub.Subreddit, sub.Interval)
 	}
-	fmt.Printf("reddid: %s\n", msg)
 	u.logger.Info("retrieved subscriptions", zap.String("subscriptions", msg))
 	u.contentCh <- []Content{
 		{
@@ -221,7 +221,6 @@ func (u *Reddit) poll(ctx context.Context, sub redditSubscription) {
 	fetch := func(ctx context.Context, sub redditSubscription) {
 		posts, err := u.fetch(ctx, sub)
 		if err != nil {
-			fmt.Println(err)
 			u.logger.Error("error fetching posts", zap.Error(err))
 		} else if len(posts) > 0 {
 			u.logger.Info("sending posts", zap.Int("count", len(posts)), zap.Int("threadId", sub.ThreadId))

@@ -1,7 +1,8 @@
-package main
+package db
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/go-redis/redis/v9"
@@ -11,13 +12,19 @@ type Redis struct {
 	client *redis.Client
 }
 
-func NewRedis(addr string) DB {
-	opt, err := redis.ParseURL(addr)
+func NewRedis(uri string) DB {
+	options, err := redis.ParseURL(uri)
 	if err != nil {
 		panic(err)
 	}
+	client := redis.NewClient(options)
+
+	res := client.Ping(context.Background())
+	if res.Err() != nil {
+		panic(fmt.Errorf("failed to ping redis: %w", res.Err()))
+	}
 	return &Redis{
-		client: redis.NewClient(opt),
+		client: client,
 	}
 }
 

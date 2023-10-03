@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	db2 "github.com/camopy/rss_everything/db"
 	"github.com/camopy/rss_everything/zaplog"
 	"go.uber.org/zap"
 	"log"
@@ -33,7 +34,7 @@ type Bot struct {
 	cfg          BotConfig
 	client       *bot.Bot
 	logger       *zaplog.Logger
-	db           DB
+	db           db2.DB
 	updatesCh    chan *models.Update
 	contentsChan chan []Content
 	chatGPT      *ChatGPT
@@ -48,7 +49,7 @@ type Content struct {
 	threadId int
 }
 
-func NewBot(logger *zaplog.Logger, db DB, cfg BotConfig) *Bot {
+func NewBot(logger *zaplog.Logger, db db2.DB, cfg BotConfig) *Bot {
 	updatesCh := make(chan *models.Update)
 
 	handler := func(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -177,12 +178,12 @@ func (b *Bot) handleCommand(ctx context.Context, update *models.Update) {
 	case "/reddit":
 		err := b.reddit.HandleCommand(ctx, cmd)
 		if err != nil {
-			log.Println(err)
+			b.logger.Error("reddit command failed", zap.Error(err))
 		}
 	case "/rss":
 		err := b.rss.HandleCommand(ctx, cmd)
 		if err != nil {
-			log.Println(err)
+			b.logger.Error("rss command failed", zap.Error(err))
 		}
 	}
 }
