@@ -68,6 +68,7 @@ func NewHackerNews(logger *zaplog.Logger, contentCh chan []commands.Content, db 
 }
 
 func (h *HackerNews) StartHackerNews() {
+	h.logger.Info("starting hacker news")
 	for {
 		stories, err := h.fetch(context.Background())
 		if err != nil {
@@ -81,6 +82,7 @@ func (h *HackerNews) StartHackerNews() {
 }
 
 func (h *HackerNews) fetch(ctx context.Context) ([]commands.Content, error) {
+	h.logger.Info("fetching hacker news")
 	ids, err := h.fetchTopStoriesIds()
 	if err != nil {
 		return nil, err
@@ -111,12 +113,14 @@ func (h *HackerNews) fetch(ctx context.Context) ([]commands.Content, error) {
 		if err != nil {
 			return nil, err
 		}
+		h.logger.Info("saved story", zap.String("title", story.Title))
 		stories = append(stories, commands.Content{
 			Text:     s,
 			ThreadId: h.threadId,
 		})
 	}
 	trackLoadedStories(len(stories))
+	h.logger.Info("fetched hacker news", zap.Int("stories", len(stories)))
 	return stories, nil
 }
 

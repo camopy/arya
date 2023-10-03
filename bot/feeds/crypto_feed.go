@@ -3,12 +3,11 @@ package feeds
 import (
 	"encoding/json"
 	"fmt"
+	"go.uber.org/zap"
 	"math"
 	"net/http"
 	"strings"
 	"time"
-
-	"go.uber.org/zap"
 
 	"github.com/camopy/rss_everything/bot/commands"
 	"github.com/camopy/rss_everything/metrics"
@@ -47,6 +46,7 @@ func NewCryptoFeed(logger *zaplog.Logger, contentCh chan []commands.Content, thr
 }
 
 func (f *CryptoFeed) StartCryptoFeed() {
+	f.logger.Info("starting crypto feed")
 	for {
 		var coins = make([]Coin, 0, len(trackedCoins))
 		for coinId, threshold := range trackedCoins {
@@ -97,6 +97,7 @@ func (c *Coin) String() string {
 }
 
 func (f *CryptoFeed) fetchCoin(coinId string) (*Coin, error) {
+	f.logger.Info("fetching coin", zap.String("coinId", coinId))
 	start := time.Now()
 	resp, err := f.client.Get(fmt.Sprintf(coinEndpoint, coinId))
 	if err != nil {

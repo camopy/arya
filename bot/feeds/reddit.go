@@ -113,6 +113,7 @@ type redditSubscription struct {
 }
 
 func (u *Reddit) add(ctx context.Context, c *redditCommand) error {
+	u.logger.Info("adding subreddit", zap.String("subreddit", c.subreddit), zap.Int("threadId", c.threadId))
 	if !strings.HasPrefix(c.subreddit, "/r/") {
 		c.subreddit = "/r/" + c.subreddit
 	}
@@ -125,6 +126,7 @@ func (u *Reddit) add(ctx context.Context, c *redditCommand) error {
 	if err := u.saveSubscription(ctx, sub); err != nil {
 		return err
 	}
+	u.logger.Info("subreddit added", zap.String("subreddit", c.subreddit), zap.Int("threadId", c.threadId))
 	go u.poll(ctx, *sub)
 	return nil
 }
@@ -143,6 +145,7 @@ func (u *Reddit) saveSubscription(ctx context.Context, sub *redditSubscription) 
 }
 
 func (u *Reddit) list(ctx context.Context, c *redditCommand) error {
+	u.logger.Info("listing subscriptions", zap.Int("threadId", c.threadId))
 	subs, err := u.getSubscriptions(ctx)
 	if err != nil {
 		return err
@@ -190,12 +193,14 @@ func (u *Reddit) getSubscriptions(ctx context.Context) ([]redditSubscription, er
 }
 
 func (u *Reddit) remove(ctx context.Context, cmd *redditCommand) error {
+	u.logger.Info("removing subreddit", zap.String("subreddit", cmd.subreddit), zap.Int("threadId", cmd.threadId))
 	for _, sub := range u.subscriptions {
 		if sub.Subreddit == cmd.subreddit {
 			err := u.db.Del(ctx, redditSubscriptionsTable, sub.Id)
 			if err != nil {
 				return err
 			}
+			u.logger.Info("subreddit removed", zap.String("subreddit", cmd.subreddit), zap.Int("threadId", cmd.threadId))
 			u.contentCh <- []commands.Content{
 				{
 					ThreadId: cmd.threadId,
@@ -209,6 +214,7 @@ func (u *Reddit) remove(ctx context.Context, cmd *redditCommand) error {
 }
 
 func (u *Reddit) StartReddit(ctx context.Context) {
+	u.logger.Info("starting reddit")
 	subs, err := u.getSubscriptions(ctx)
 	if err != nil && !u.db.IsErrNotFound(err) {
 		panic(err)
@@ -220,6 +226,7 @@ func (u *Reddit) StartReddit(ctx context.Context) {
 }
 
 func (u *Reddit) poll(ctx context.Context, sub redditSubscription) {
+	u.logger.Info("polling subreddit", zap.String("subreddit", sub.Subreddit), zap.Int("threadId", sub.ThreadId))
 	fetch := func(ctx context.Context, sub redditSubscription) {
 		posts, err := u.fetch(ctx, sub)
 		if err != nil {
@@ -228,6 +235,7 @@ func (u *Reddit) poll(ctx context.Context, sub redditSubscription) {
 			u.logger.Info("sending posts", zap.Int("count", len(posts)), zap.Int("threadId", sub.ThreadId))
 			u.contentCh <- posts
 		}
+		u.logger.Info("finished polling subreddit", zap.String("subreddit", sub.Subreddit), zap.Int("threadId", sub.ThreadId), zap.Int("new posts", len(posts)))
 	}
 	fetch(ctx, sub)
 
@@ -270,6 +278,7 @@ func (p redditPost) String() string {
 }
 
 func (u *Reddit) fetch(ctx context.Context, sub redditSubscription) ([]commands.Content, error) {
+	u.logger.Info("fetching posts", zap.String("subreddit", sub.Subreddit), zap.Int("threadId", sub.ThreadId))
 	harvest, err := u.client.ListingWithParams(sub.Subreddit, map[string]string{
 		"limit": strconv.Itoa(redditFetchLimit),
 	})
@@ -299,6 +308,8 @@ func (u *Reddit) fetch(ctx context.Context, sub redditSubscription) ([]commands.
 		if err := u.savePost(ctx, p); err != nil {
 			return nil, err
 		}
+
+		u.logger.Info("saved new post", zap.String("post", p.String()))
 
 		posts = append(posts, commands.Content{
 			ThreadId: sub.ThreadId,

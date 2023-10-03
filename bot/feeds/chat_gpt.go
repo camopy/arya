@@ -48,6 +48,7 @@ func NewChatGPT(logger *zaplog.Logger, contentCh chan []commands.Content, apiKey
 }
 
 func (c *ChatGPT) StartChatGPT() {
+	c.logger.Info("starting chat gpt")
 	for {
 		select {
 		case prompt := <-c.promptCh:
@@ -67,6 +68,7 @@ func (c *ChatGPT) StartChatGPT() {
 }
 
 func (c *ChatGPT) ask(prompt string) (string, error) {
+	c.logger.Info("asking", zap.String("prompt", prompt))
 	defer trackCompletionRequestDuration()()
 	req := gogpt.CompletionRequest{
 		Model:     gogpt.GPT3TextDavinci003,

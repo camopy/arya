@@ -39,6 +39,7 @@ func NewRSS(logger *zaplog.Logger, contentCh chan []commands.Content, db db.DB) 
 }
 
 func (u *RSS) HandleCommand(ctx context.Context, cmd commands.Command) error {
+	u.logger.Info("handling command", zap.String("command", cmd.Text))
 	c, err := u.parseCommand(cmd)
 	if err != nil {
 		return err
@@ -98,6 +99,13 @@ type rssSubscription struct {
 }
 
 func (u *RSS) add(ctx context.Context, c *rssCommand) error {
+	u.logger.Info(
+		"adding subscription",
+		zap.String("feedTitle", c.feedTitle),
+		zap.String("url", c.args[0]),
+		zap.Duration("interval", c.interval),
+		zap.Int("threadId", c.threadId),
+	)
 	sub := &rssSubscription{
 		Url:       c.args[0],
 		FeedTitle: c.feedTitle,
@@ -120,11 +128,13 @@ func (u *RSS) saveSubscription(ctx context.Context, sub *rssSubscription) error 
 	if err != nil {
 		return err
 	}
+	u.logger.Info("subscription added", zap.String("subscription", string(b)))
 	u.subscriptions = append(u.subscriptions, *sub)
 	return nil
 }
 
 func (u *RSS) list(ctx context.Context, c *rssCommand) error {
+	u.logger.Info("listing subscriptions")
 	subs, err := u.getSubscriptions(ctx)
 	if err != nil {
 		return err
@@ -154,6 +164,7 @@ func (u *RSS) list(ctx context.Context, c *rssCommand) error {
 }
 
 func (u *RSS) getSubscriptions(ctx context.Context) ([]rssSubscription, error) {
+	u.logger.Info("retrieving subscriptions")
 	b, err := u.db.List(ctx, rssSubscriptionsTable)
 	if err != nil {
 		return nil, err
@@ -172,12 +183,14 @@ func (u *RSS) getSubscriptions(ctx context.Context) ([]rssSubscription, error) {
 }
 
 func (u *RSS) remove(ctx context.Context, cmd *rssCommand) error {
+	u.logger.Info("removing subscription", zap.String("feedTitle", cmd.feedTitle))
 	for _, sub := range u.subscriptions {
 		if sub.FeedTitle == cmd.feedTitle {
 			err := u.db.Del(ctx, rssSubscriptionsTable, sub.Id)
 			if err != nil {
 				return err
 			}
+			u.logger.Info("subscription removed", zap.String("feedTitle", cmd.feedTitle))
 			u.contentCh <- []commands.Content{
 				{
 					ThreadId: cmd.threadId,
@@ -191,6 +204,7 @@ func (u *RSS) remove(ctx context.Context, cmd *rssCommand) error {
 }
 
 func (u *RSS) StartRSS(ctx context.Context) {
+	u.logger.Info("starting rss")
 	subs, err := u.getSubscriptions(ctx)
 	if err != nil && !u.db.IsErrNotFound(err) {
 		panic(err)
@@ -202,6 +216,7 @@ func (u *RSS) StartRSS(ctx context.Context) {
 }
 
 func (u *RSS) poll(ctx context.Context, sub rssSubscription) {
+	u.logger.Info("polling", zap.String("url", sub.Url))
 	fetch := func(ctx context.Context, sub rssSubscription) {
 		posts, err := u.fetch(ctx, sub)
 		if err != nil {
@@ -212,6 +227,7 @@ func (u *RSS) poll(ctx context.Context, sub rssSubscription) {
 			u.logger.Info("sending posts", zap.Int("count", len(posts)), zap.Int("threadId", sub.ThreadId))
 			u.contentCh <- posts
 		}
+		u.logger.Info("polling done", zap.String("url", sub.Url), zap.Int("threadId", sub.ThreadId), zap.Int("new posts", len(posts)))
 	}
 	fetch(ctx, sub)
 
@@ -242,6 +258,7 @@ func (p rssPost) String() string {
 }
 
 func (u *RSS) fetch(ctx context.Context, sub rssSubscription) ([]commands.Content, error) {
+	u.logger.Info("fetching", zap.String("url", sub.Url))
 	feed, err := u.client.ParseURLWithContext(sub.Url, ctx)
 	if err != nil {
 		return nil, err
@@ -267,6 +284,8 @@ func (u *RSS) fetch(ctx context.Context, sub rssSubscription) ([]commands.Conten
 		if err := u.savePost(ctx, p); err != nil {
 			return nil, err
 		}
+
+		u.logger.Info("saved new post", zap.String("post", p.Title))
 
 		posts = append(posts, commands.Content{
 			ThreadId: sub.ThreadId,
