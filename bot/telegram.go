@@ -112,7 +112,12 @@ func (b *Telegram) handleFeedUpdates(ctx context.Context) {
 					},
 				)
 				if err != nil {
-					b.logger.Error("failed to send message", zap.Error(err))
+					b.logger.Error(
+						"failed to send message",
+						zap.Error(err),
+						zap.Int("threadId", c.ThreadId),
+						zap.String("msg", c.Text),
+					)
 				}
 			}
 		}
@@ -138,6 +143,7 @@ func (b *Telegram) handleMessages(ctx context.Context) {
 			zap.String("msg", update.Message.Text),
 		)
 		if !b.isValidChatId(update.Message.Chat.ID) {
+			b.logger.Info("invalid chat id", zap.Int64("chatId", update.Message.Chat.ID))
 			continue
 		}
 		if isCommand(update.Message) {
@@ -156,6 +162,7 @@ func (b *Telegram) isValidChatId(id int64) bool {
 }
 
 func (b *Telegram) handleCommand(ctx context.Context, update *models.Update) {
+	b.logger.Info("command received", zap.String("cmd", update.Message.Text))
 	entity := update.Message.Entities[0]
 	cmd := commands.Command{
 		Name:     update.Message.Text[:entity.Length],
