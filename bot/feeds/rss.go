@@ -1,16 +1,19 @@
-package main
+package feeds
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
-	db2 "github.com/camopy/rss_everything/db"
-	"github.com/camopy/rss_everything/zaplog"
-	"github.com/mmcdole/gofeed"
-	"go.uber.org/zap"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/mmcdole/gofeed"
+	"go.uber.org/zap"
+
+	"github.com/camopy/rss_everything/bot/commands"
+	"github.com/camopy/rss_everything/db"
+	"github.com/camopy/rss_everything/zaplog"
 )
 
 const (
@@ -21,12 +24,12 @@ const (
 type RSS struct {
 	client        *gofeed.Parser
 	logger        *zaplog.Logger
-	db            db2.DB
+	db            db.DB
 	subscriptions []rssSubscription
-	contentCh     chan []Content
+	contentCh     chan []commands.Content
 }
 
-func NewRSS(logger *zaplog.Logger, contentCh chan []Content, db db2.DB) *RSS {
+func NewRSS(logger *zaplog.Logger, contentCh chan []commands.Content, db db.DB) *RSS {
 	return &RSS{
 		client:    gofeed.NewParser(),
 		logger:    logger,
@@ -35,7 +38,7 @@ func NewRSS(logger *zaplog.Logger, contentCh chan []Content, db db2.DB) *RSS {
 	}
 }
 
-func (u *RSS) HandleCommand(ctx context.Context, cmd command) error {
+func (u *RSS) HandleCommand(ctx context.Context, cmd commands.Command) error {
 	c, err := u.parseCommand(cmd)
 	if err != nil {
 		return err
@@ -59,11 +62,11 @@ type rssCommand struct {
 	args      []string
 }
 
-func (u *RSS) parseCommand(cmd command) (*rssCommand, error) {
-	s := strings.Split(cmd.text, " ")
+func (u *RSS) parseCommand(cmd commands.Command) (*rssCommand, error) {
+	s := strings.Split(cmd.Text, " ")
 
 	c := &rssCommand{
-		threadId: cmd.threadId,
+		threadId: cmd.ThreadId,
 		name:     s[0],
 	}
 
@@ -128,10 +131,10 @@ func (u *RSS) list(ctx context.Context, c *rssCommand) error {
 	}
 	if len(subs) == 0 {
 		u.logger.Info("no subscriptions")
-		u.contentCh <- []Content{
+		u.contentCh <- []commands.Content{
 			{
-				threadId: c.threadId,
-				text:     "No subscriptions",
+				ThreadId: c.threadId,
+				Text:     "No subscriptions",
 			},
 		}
 		return nil
@@ -141,10 +144,10 @@ func (u *RSS) list(ctx context.Context, c *rssCommand) error {
 		msg += fmt.Sprintf("%s: %s\n", sub.Url, sub.Interval)
 	}
 	u.logger.Info("retrieved subscriptions", zap.String("subscriptions", msg))
-	u.contentCh <- []Content{
+	u.contentCh <- []commands.Content{
 		{
-			threadId: c.threadId,
-			text:     msg,
+			ThreadId: c.threadId,
+			Text:     msg,
 		},
 	}
 	return nil
@@ -175,10 +178,10 @@ func (u *RSS) remove(ctx context.Context, cmd *rssCommand) error {
 			if err != nil {
 				return err
 			}
-			u.contentCh <- []Content{
+			u.contentCh <- []commands.Content{
 				{
-					threadId: cmd.threadId,
-					text:     fmt.Sprintf("reddit: removed %s", cmd.feedTitle),
+					ThreadId: cmd.threadId,
+					Text:     fmt.Sprintf("reddit: removed %s", cmd.feedTitle),
 				},
 			}
 			return nil
@@ -238,12 +241,12 @@ func (p rssPost) String() string {
 %s`, p.Title, p.Permalink)
 }
 
-func (u *RSS) fetch(ctx context.Context, sub rssSubscription) ([]Content, error) {
+func (u *RSS) fetch(ctx context.Context, sub rssSubscription) ([]commands.Content, error) {
 	feed, err := u.client.ParseURLWithContext(sub.Url, ctx)
 	if err != nil {
 		return nil, err
 	}
-	posts := make([]Content, 0, rssFetchLimit)
+	posts := make([]commands.Content, 0, rssFetchLimit)
 	for _, post := range feed.Items {
 		p := rssPost{
 			FeedTitle:  sub.FeedTitle,
@@ -265,9 +268,9 @@ func (u *RSS) fetch(ctx context.Context, sub rssSubscription) ([]Content, error)
 			return nil, err
 		}
 
-		posts = append(posts, Content{
-			threadId: sub.ThreadId,
-			text:     p.String(),
+		posts = append(posts, commands.Content{
+			ThreadId: sub.ThreadId,
+			Text:     p.String(),
 		})
 	}
 

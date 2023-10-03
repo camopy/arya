@@ -1,17 +1,21 @@
-package main
+package feeds
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
-	db2 "github.com/camopy/rss_everything/db"
-	"github.com/camopy/rss_everything/zaplog"
-	"github.com/prometheus/client_golang/prometheus"
-	"go.uber.org/zap"
 	"log"
 	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"go.uber.org/zap"
+
+	"github.com/camopy/rss_everything/bot/commands"
+	"github.com/camopy/rss_everything/db"
+	"github.com/camopy/rss_everything/metrics"
+	"github.com/camopy/rss_everything/zaplog"
 )
 
 const (
@@ -27,13 +31,13 @@ var hackerNewsMetrics = struct {
 	storiesLoadedTotal *prometheus.GaugeVec
 	loadStoriesTotal   *prometheus.CounterVec
 }{
-	storiesLoadedTotal: NewGaugeVec(
+	storiesLoadedTotal: metrics.NewGaugeVec(
 		hackerNews,
 		"stories_loaded_total",
 		"Total number of stories loaded",
 		[]string{},
 	),
-	loadStoriesTotal: NewCounterVec(
+	loadStoriesTotal: metrics.NewCounterVec(
 		hackerNews,
 		"load_stories_total",
 		"Total number of load stories requests",
@@ -49,12 +53,12 @@ func trackLoadedStories(storiesLoaded int) {
 type HackerNews struct {
 	*http.Client
 	logger    *zaplog.Logger
-	db        db2.DB
-	contentCh chan []Content
+	db        db.DB
+	contentCh chan []commands.Content
 	threadId  int
 }
 
-func NewHackerNews(logger *zaplog.Logger, contentCh chan []Content, db db2.DB, threadId int) *HackerNews {
+func NewHackerNews(logger *zaplog.Logger, contentCh chan []commands.Content, db db.DB, threadId int) *HackerNews {
 	return &HackerNews{
 		Client:    http.DefaultClient,
 		logger:    logger,
@@ -77,12 +81,12 @@ func (h *HackerNews) StartHackerNews() {
 	}
 }
 
-func (h *HackerNews) fetch(ctx context.Context) ([]Content, error) {
+func (h *HackerNews) fetch(ctx context.Context) ([]commands.Content, error) {
 	ids, err := h.fetchTopStoriesIds()
 	if err != nil {
 		return nil, err
 	}
-	stories := make([]Content, 0, topStoriesLimit)
+	stories := make([]commands.Content, 0, topStoriesLimit)
 	i := 0
 	for i < len(ids) && i < topStoriesLimit {
 		id := ids[i]
@@ -108,9 +112,9 @@ func (h *HackerNews) fetch(ctx context.Context) ([]Content, error) {
 		if err != nil {
 			return nil, err
 		}
-		stories = append(stories, Content{
-			text:     s,
-			threadId: h.threadId,
+		stories = append(stories, commands.Content{
+			Text:     s,
+			ThreadId: h.threadId,
 		})
 	}
 	trackLoadedStories(len(stories))
@@ -133,7 +137,7 @@ func (h *HackerNews) fetchTopStoriesIds() ([]int, error) {
 	}
 	defer resp.Body.Close()
 
-	trackExternalRequest(http.MethodGet, resp.Request.URL.Host, resp.StatusCode, time.Since(start))
+	metrics.TrackExternalRequest(http.MethodGet, resp.Request.URL.Host, resp.StatusCode, time.Since(start))
 
 	var ids []int
 	if err := json.NewDecoder(resp.Body).Decode(&ids); err != nil {
@@ -163,7 +167,7 @@ func (h *HackerNews) fetchStory(id int) (*Story, error) {
 	}
 	defer resp.Body.Close()
 
-	trackExternalRequest(http.MethodGet, resp.Request.URL.Host, resp.StatusCode, time.Since(start))
+	metrics.TrackExternalRequest(http.MethodGet, resp.Request.URL.Host, resp.StatusCode, time.Since(start))
 
 	var s Story
 	if err := json.NewDecoder(resp.Body).Decode(&s); err != nil {

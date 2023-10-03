@@ -1,10 +1,9 @@
-package main
+package bot
 
 import (
 	"context"
-	db2 "github.com/camopy/rss_everything/db"
-	"github.com/camopy/rss_everything/zaplog"
-	"go.uber.org/zap"
+	"github.com/camopy/rss_everything/bot/commands"
+	feeds2 "github.com/camopy/rss_everything/bot/feeds"
 	"log"
 	"os"
 	"os/signal"
@@ -12,6 +11,10 @@ import (
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
+	"go.uber.org/zap"
+
+	"github.com/camopy/rss_everything/db"
+	"github.com/camopy/rss_everything/zaplog"
 )
 
 const (
@@ -19,7 +22,7 @@ const (
 	cryptoThreadId     = 9
 )
 
-type BotConfig struct {
+type TelegramConfig struct {
 	ChatId          int
 	TelegramApiKey  string
 	ChatGPTApiKey   string
@@ -30,26 +33,21 @@ type BotConfig struct {
 	RedditPassword  string
 }
 
-type Bot struct {
-	cfg          BotConfig
+type Telegram struct {
+	cfg          TelegramConfig
 	client       *bot.Bot
 	logger       *zaplog.Logger
-	db           db2.DB
+	db           db.DB
 	updatesCh    chan *models.Update
-	contentsChan chan []Content
-	chatGPT      *ChatGPT
-	hackerNews   *HackerNews
-	cryptoFeed   *CryptoFeed
-	reddit       *Reddit
-	rss          *RSS
+	contentsChan chan []commands.Content
+	chatGPT      *feeds2.ChatGPT
+	hackerNews   *feeds2.HackerNews
+	cryptoFeed   *feeds2.CryptoFeed
+	reddit       *feeds2.Reddit
+	rss          *feeds2.RSS
 }
 
-type Content struct {
-	text     string
-	threadId int
-}
-
-func NewBot(logger *zaplog.Logger, db db2.DB, cfg BotConfig) *Bot {
+func NewTelegramBot(logger *zaplog.Logger, db db.DB, cfg TelegramConfig) *Telegram {
 	updatesCh := make(chan *models.Update)
 
 	handler := func(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -67,17 +65,17 @@ func NewBot(logger *zaplog.Logger, db db2.DB, cfg BotConfig) *Bot {
 		log.Panic(err)
 	}
 
-	return &Bot{
+	return &Telegram{
 		cfg:          cfg,
 		client:       api,
 		logger:       logger,
 		db:           db,
-		contentsChan: make(chan []Content),
+		contentsChan: make(chan []commands.Content),
 		updatesCh:    updatesCh,
 	}
 }
 
-func (b *Bot) Start() {
+func (b *Telegram) Start() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
@@ -88,12 +86,12 @@ func (b *Bot) Start() {
 	b.client.Start(ctx)
 }
 
-func (b *Bot) initFeeds(ctx context.Context, cfg BotConfig) {
-	b.chatGPT = NewChatGPT(b.logger.Named("chat-gpt"), b.contentsChan, cfg.ChatGPTApiKey, cfg.ChatGPTUserName)
-	b.hackerNews = NewHackerNews(b.logger.Named("hacker-news"), b.contentsChan, b.db, hackerNewsThreadId)
-	b.cryptoFeed = NewCryptoFeed(b.logger.Named("crypto"), b.contentsChan, cryptoThreadId)
-	b.reddit = NewReddit(b.logger.Named("reddit"), b.contentsChan, b.db, cfg.RedditClientId, cfg.RedditApiKey, cfg.RedditUsername, cfg.RedditPassword)
-	b.rss = NewRSS(b.logger.Named("rss"), b.contentsChan, b.db)
+func (b *Telegram) initFeeds(ctx context.Context, cfg TelegramConfig) {
+	b.chatGPT = feeds2.NewChatGPT(b.logger.Named("chat-gpt"), b.contentsChan, cfg.ChatGPTApiKey, cfg.ChatGPTUserName)
+	b.hackerNews = feeds2.NewHackerNews(b.logger.Named("hacker-news"), b.contentsChan, b.db, hackerNewsThreadId)
+	b.cryptoFeed = feeds2.NewCryptoFeed(b.logger.Named("crypto"), b.contentsChan, cryptoThreadId)
+	b.reddit = feeds2.NewReddit(b.logger.Named("reddit"), b.contentsChan, b.db, cfg.RedditClientId, cfg.RedditApiKey, cfg.RedditUsername, cfg.RedditPassword)
+	b.rss = feeds2.NewRSS(b.logger.Named("rss"), b.contentsChan, b.db)
 
 	go b.hackerNews.StartHackerNews()
 	go b.chatGPT.StartChatGPT()
@@ -102,7 +100,7 @@ func (b *Bot) initFeeds(ctx context.Context, cfg BotConfig) {
 	go b.rss.StartRSS(ctx)
 }
 
-func (b *Bot) handleFeedUpdates(ctx context.Context) {
+func (b *Telegram) handleFeedUpdates(ctx context.Context) {
 	for {
 		select {
 		case contents := <-b.contentsChan:
@@ -110,8 +108,8 @@ func (b *Bot) handleFeedUpdates(ctx context.Context) {
 				_, err := b.client.SendMessage(
 					ctx, &bot.SendMessageParams{
 						ChatID:          b.cfg.ChatId,
-						Text:            c.text,
-						MessageThreadID: c.threadId,
+						Text:            c.Text,
+						MessageThreadID: c.ThreadId,
 					},
 				)
 				if err != nil {
@@ -122,7 +120,7 @@ func (b *Bot) handleFeedUpdates(ctx context.Context) {
 	}
 }
 
-func (b *Bot) handleMessages(ctx context.Context) {
+func (b *Telegram) handleMessages(ctx context.Context) {
 	isCommand := func(m *models.Message) bool {
 		if m.Entities == nil || len(m.Entities) == 0 {
 			return false
@@ -147,34 +145,27 @@ func (b *Bot) handleMessages(ctx context.Context) {
 			b.handleCommand(ctx, update)
 			continue
 		}
-		b.chatGPT.Ask(Content{
-			text:     update.Message.Text,
-			threadId: update.Message.MessageThreadID,
+		b.chatGPT.Ask(commands.Content{
+			Text:     update.Message.Text,
+			ThreadId: update.Message.MessageThreadID,
 		})
 	}
 }
 
-func (b *Bot) isValidChatId(id int64) bool {
+func (b *Telegram) isValidChatId(id int64) bool {
 	return id == int64(b.cfg.ChatId)
 }
 
-type command struct {
-	name     string
-	chatId   int64
-	threadId int
-	text     string
-}
-
-func (b *Bot) handleCommand(ctx context.Context, update *models.Update) {
+func (b *Telegram) handleCommand(ctx context.Context, update *models.Update) {
 	entity := update.Message.Entities[0]
-	cmd := command{
-		name:     update.Message.Text[:entity.Length],
-		chatId:   update.Message.Chat.ID,
-		threadId: update.Message.MessageThreadID,
-		text:     strings.Trim(update.Message.Text[entity.Length:], " "),
+	cmd := commands.Command{
+		Name:     update.Message.Text[:entity.Length],
+		ChatId:   update.Message.Chat.ID,
+		ThreadId: update.Message.MessageThreadID,
+		Text:     strings.Trim(update.Message.Text[entity.Length:], " "),
 	}
 
-	switch cmd.name {
+	switch cmd.Name {
 	case "/reddit":
 		err := b.reddit.HandleCommand(ctx, cmd)
 		if err != nil {

@@ -1,4 +1,4 @@
-package main
+package metrics
 
 import (
 	"strconv"
@@ -9,34 +9,34 @@ import (
 )
 
 const namespace = "rss_feed"
-const subsystem = "http"
+const Subsystem = "http"
 
 var metrics = struct {
 	externalRequestDuration *prometheus.HistogramVec
 	externalRequestTotal    *prometheus.CounterVec
 }{
 	externalRequestDuration: NewHistogramVec(
-		subsystem,
+		Subsystem,
 		"external_request_duration_seconds",
 		"Duration of external requests in seconds",
 		[]string{"method", "endpoint", "code"},
 		prometheus.DefBuckets,
 	),
 	externalRequestTotal: NewCounterVec(
-		subsystem,
+		Subsystem,
 		"external_request_total",
 		"Total number of external requests",
 		[]string{"method", "endpoint", "statusCode"},
 	),
 }
 
-func trackExternalRequest(method, endpoint string, statusCode int, duration time.Duration) {
+func TrackExternalRequest(method, endpoint string, statusCode int, duration time.Duration) {
 	code := strconv.Itoa(statusCode)
 	metrics.externalRequestDuration.WithLabelValues(method, endpoint, code).Observe(duration.Seconds())
 	metrics.externalRequestTotal.WithLabelValues(method, endpoint, code).Inc()
 }
 
-func trackDuration(observe func(float64)) (stop func()) {
+func TrackDuration(observe func(float64)) (stop func()) {
 	start := time.Now()
 	return func() {
 		observe(time.Since(start).Seconds())

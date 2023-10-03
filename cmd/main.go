@@ -3,20 +3,23 @@ package main
 import (
 	"errors"
 	"fmt"
-	db2 "github.com/camopy/rss_everything/db"
-	"github.com/camopy/rss_everything/zaplog"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"log"
 	"net/http"
 	"os"
 	"strconv"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	"github.com/camopy/rss_everything/bot"
+	"github.com/camopy/rss_everything/db"
+	"github.com/camopy/rss_everything/zaplog"
 )
 
 const metricsServerAddr = "0.0.0.0:9091"
 
 type Config struct {
 	RedisURI  string
-	BotConfig BotConfig
+	BotConfig bot.TelegramConfig
 }
 
 func main() {
@@ -28,9 +31,13 @@ func main() {
 	defer zaplog.Recover()
 
 	go startMetricsServer()
-	db := db2.NewRedis(cfg.RedisURI)
-	bot := NewBot(logger.Named("bot"), db, cfg.BotConfig)
-	bot.Start()
+
+	telegramBot := bot.NewTelegramBot(
+		logger.Named("telegram-bot"),
+		db.NewRedis(cfg.RedisURI),
+		cfg.BotConfig,
+	)
+	telegramBot.Start()
 }
 
 func decodeEnv() (*Config, error) {

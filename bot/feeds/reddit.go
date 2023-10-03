@@ -1,18 +1,20 @@
-package main
+package feeds
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
-	db2 "github.com/camopy/rss_everything/db"
-	"github.com/camopy/rss_everything/zaplog"
-	"go.uber.org/zap"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/turnage/graw/reddit"
+	"go.uber.org/zap"
+
+	"github.com/camopy/rss_everything/bot/commands"
+	"github.com/camopy/rss_everything/db"
+	"github.com/camopy/rss_everything/zaplog"
 )
 
 const (
@@ -23,12 +25,12 @@ const (
 type Reddit struct {
 	client        reddit.Bot
 	logger        *zaplog.Logger
-	db            db2.DB
+	db            db.DB
 	subscriptions []redditSubscription
-	contentCh     chan []Content
+	contentCh     chan []commands.Content
 }
 
-func NewReddit(logger *zaplog.Logger, contentCh chan []Content, db db2.DB, id string, key string, username string, password string) *Reddit {
+func NewReddit(logger *zaplog.Logger, contentCh chan []commands.Content, db db.DB, id string, key string, username string, password string) *Reddit {
 	cfg := reddit.BotConfig{
 		Agent: "rss_feed:1:0.1 (by /u/BurnInNoia)",
 		App: reddit.App{
@@ -52,7 +54,7 @@ func NewReddit(logger *zaplog.Logger, contentCh chan []Content, db db2.DB, id st
 	}
 }
 
-func (u *Reddit) HandleCommand(ctx context.Context, cmd command) error {
+func (u *Reddit) HandleCommand(ctx context.Context, cmd commands.Command) error {
 	c, err := u.parseCommand(cmd)
 	if err != nil {
 		return err
@@ -76,11 +78,11 @@ type redditCommand struct {
 	args      []string
 }
 
-func (u *Reddit) parseCommand(cmd command) (*redditCommand, error) {
-	s := strings.Split(cmd.text, " ")
+func (u *Reddit) parseCommand(cmd commands.Command) (*redditCommand, error) {
+	s := strings.Split(cmd.Text, " ")
 
 	c := &redditCommand{
-		threadId: cmd.threadId,
+		threadId: cmd.ThreadId,
 		name:     s[0],
 	}
 
@@ -147,10 +149,10 @@ func (u *Reddit) list(ctx context.Context, c *redditCommand) error {
 	}
 	if len(subs) == 0 {
 		u.logger.Info("no subscriptions")
-		u.contentCh <- []Content{
+		u.contentCh <- []commands.Content{
 			{
-				threadId: c.threadId,
-				text:     "No subscriptions",
+				ThreadId: c.threadId,
+				Text:     "No subscriptions",
 			},
 		}
 		return nil
@@ -160,10 +162,10 @@ func (u *Reddit) list(ctx context.Context, c *redditCommand) error {
 		msg += fmt.Sprintf("%s: %s\n", sub.Subreddit, sub.Interval)
 	}
 	u.logger.Info("retrieved subscriptions", zap.String("subscriptions", msg))
-	u.contentCh <- []Content{
+	u.contentCh <- []commands.Content{
 		{
-			threadId: c.threadId,
-			text:     msg,
+			ThreadId: c.threadId,
+			Text:     msg,
 		},
 	}
 	return nil
@@ -194,10 +196,10 @@ func (u *Reddit) remove(ctx context.Context, cmd *redditCommand) error {
 			if err != nil {
 				return err
 			}
-			u.contentCh <- []Content{
+			u.contentCh <- []commands.Content{
 				{
-					threadId: cmd.threadId,
-					text:     fmt.Sprintf("reddit: removed %s", cmd.subreddit),
+					ThreadId: cmd.threadId,
+					Text:     fmt.Sprintf("reddit: removed %s", cmd.subreddit),
 				},
 			}
 			return nil
@@ -267,14 +269,14 @@ func (p redditPost) String() string {
 %s`, p.Subreddit, p.Title, p.Score, links)
 }
 
-func (u *Reddit) fetch(ctx context.Context, sub redditSubscription) ([]Content, error) {
+func (u *Reddit) fetch(ctx context.Context, sub redditSubscription) ([]commands.Content, error) {
 	harvest, err := u.client.ListingWithParams(sub.Subreddit, map[string]string{
 		"limit": strconv.Itoa(redditFetchLimit),
 	})
 	if err != nil {
 		return nil, err
 	}
-	posts := make([]Content, 0, redditFetchLimit)
+	posts := make([]commands.Content, 0, redditFetchLimit)
 	for _, post := range harvest.Posts {
 		p := redditPost{
 			ID:         post.ID,
@@ -298,9 +300,9 @@ func (u *Reddit) fetch(ctx context.Context, sub redditSubscription) ([]Content, 
 			return nil, err
 		}
 
-		posts = append(posts, Content{
-			threadId: sub.ThreadId,
-			text:     p.String(),
+		posts = append(posts, commands.Content{
+			ThreadId: sub.ThreadId,
+			Text:     p.String(),
 		})
 	}
 

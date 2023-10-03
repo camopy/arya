@@ -1,15 +1,19 @@
-package main
+package feeds
 
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/camopy/rss_everything/zaplog"
-	"go.uber.org/zap"
 	"log"
 	"math"
 	"net/http"
 	"strings"
 	"time"
+
+	"go.uber.org/zap"
+
+	"github.com/camopy/rss_everything/bot/commands"
+	"github.com/camopy/rss_everything/metrics"
+	"github.com/camopy/rss_everything/zaplog"
 )
 
 const (
@@ -35,11 +39,11 @@ var trackedCoins = map[string]float64{
 type CryptoFeed struct {
 	client    *http.Client
 	logger    *zaplog.Logger
-	contentCh chan []Content
+	contentCh chan []commands.Content
 	threadId  int
 }
 
-func NewCryptoFeed(logger *zaplog.Logger, contentCh chan []Content, threadId int) *CryptoFeed {
+func NewCryptoFeed(logger *zaplog.Logger, contentCh chan []commands.Content, threadId int) *CryptoFeed {
 	return &CryptoFeed{client: http.DefaultClient, logger: logger, contentCh: contentCh, threadId: threadId}
 }
 
@@ -56,10 +60,10 @@ func (f *CryptoFeed) StartCryptoFeed() {
 		}
 		if len(coins) > 0 {
 			f.logger.Info("sending coins", zap.Int("count", len(coins)), zap.Int("threadId", f.threadId))
-			f.contentCh <- []Content{
+			f.contentCh <- []commands.Content{
 				{
-					text:     Coins(coins).String(),
-					threadId: f.threadId,
+					Text:     Coins(coins).String(),
+					ThreadId: f.threadId,
 				},
 			}
 		}
@@ -101,7 +105,7 @@ func (f *CryptoFeed) fetchCoin(coinId string) (*Coin, error) {
 	}
 	defer resp.Body.Close()
 
-	trackExternalRequest(http.MethodGet, resp.Request.URL.Host, resp.StatusCode, time.Since(start))
+	metrics.TrackExternalRequest(http.MethodGet, resp.Request.URL.Host, resp.StatusCode, time.Since(start))
 
 	type coinResp struct {
 		Id         string `json:"id"`
