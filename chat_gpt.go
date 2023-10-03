@@ -47,6 +47,7 @@ func (c *ChatGPT) StartChatGPT() {
 			if err != nil {
 				fmt.Println(err)
 			}
+			fmt.Printf("chatgpt: sending answer to thread %d\n", prompt.threadId)
 			c.contentCh <- []Content{
 				{
 					text:     resp,

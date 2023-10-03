@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -130,6 +131,7 @@ func (b *Bot) handleMessages(ctx context.Context) {
 		if update.Message == nil {
 			continue
 		}
+		b.logMessage(update.Message.Text)
 		if !b.isValidChatId(update.Message.Chat.ID) {
 			continue
 		}
@@ -142,6 +144,10 @@ func (b *Bot) handleMessages(ctx context.Context) {
 			threadId: update.Message.MessageThreadID,
 		})
 	}
+}
+
+func (b *Bot) logMessage(msg string) {
+	fmt.Printf("Message received: %s\n", msg)
 }
 
 func (b *Bot) isValidChatId(id int64) bool {

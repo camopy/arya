@@ -52,6 +52,7 @@ func (f *CryptoFeed) StartCryptoFeed() {
 			}
 		}
 		if len(coins) > 0 {
+			fmt.Printf("crypto: sending %d coins to thread %d\n", len(coins), f.threadId)
 			f.contentCh <- []Content{
 				{
 					text:     Coins(coins).String(),

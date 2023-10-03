@@ -65,6 +65,7 @@ func (h *HackerNews) StartHackerNews() {
 		if err != nil {
 			log.Println(err)
 		} else if len(stories) > 0 {
+			fmt.Printf("hacker-news: sending %d stories to thread %d\n", len(stories), h.threadId)
 			h.contentCh <- stories
 		}
 		time.Sleep(fetchInterval)

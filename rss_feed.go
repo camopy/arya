@@ -197,6 +197,7 @@ func (u *RSS) poll(ctx context.Context, sub rssSubscription) {
 		if err != nil {
 			fmt.Println(err)
 		} else if len(posts) > 0 {
+			fmt.Printf("rss: sending %d posts to thread %d\n", len(posts), sub.ThreadId)
 			u.contentCh <- posts
 		}
 	}
