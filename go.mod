@@ -4,7 +4,7 @@ go 1.19
 
 require (
 	github.com/go-redis/redis/v9 v9.0.0-rc.2
-	github.com/go-telegram/bot v0.4.1
+	github.com/go-telegram/bot v0.8.0
 	github.com/mmcdole/gofeed v1.2.1
 	github.com/prometheus/client_golang v1.14.0
 	github.com/sashabaranov/go-gpt3 v0.0.0-20230112080207-81b5788cd68e
