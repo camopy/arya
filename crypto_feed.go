@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/camopy/rss_everything/zaplog"
+	"go.uber.org/zap"
 	"log"
 	"math"
 	"net/http"
@@ -32,12 +34,13 @@ var trackedCoins = map[string]float64{
 
 type CryptoFeed struct {
 	client    *http.Client
+	logger    *zaplog.Logger
 	contentCh chan []Content
 	threadId  int
 }
 
-func NewCryptoFeed(contentCh chan []Content, threadId int) *CryptoFeed {
-	return &CryptoFeed{client: http.DefaultClient, contentCh: contentCh, threadId: threadId}
+func NewCryptoFeed(logger *zaplog.Logger, contentCh chan []Content, threadId int) *CryptoFeed {
+	return &CryptoFeed{client: http.DefaultClient, logger: logger, contentCh: contentCh, threadId: threadId}
 }
 
 func (f *CryptoFeed) StartCryptoFeed() {
@@ -52,7 +55,7 @@ func (f *CryptoFeed) StartCryptoFeed() {
 			}
 		}
 		if len(coins) > 0 {
-			fmt.Printf("crypto: sending %d coins to thread %d\n", len(coins), f.threadId)
+			f.logger.Info("sending coins", zap.Int("count", len(coins)), zap.Int("threadId", f.threadId))
 			f.contentCh <- []Content{
 				{
 					text:     Coins(coins).String(),

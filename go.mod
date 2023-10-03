@@ -9,6 +9,8 @@ require (
 	github.com/prometheus/client_golang v1.14.0
 	github.com/sashabaranov/go-gpt3 v0.0.0-20230112080207-81b5788cd68e
 	github.com/turnage/graw v0.0.0-20201204201853-a177df1b5c91
+	github.com/uptrace/opentelemetry-go-extra/otelzap v0.2.3
+	go.uber.org/zap v1.26.0
 )
 
 require (
@@ -28,9 +30,13 @@ require (
 	github.com/prometheus/common v0.37.0 // indirect
 	github.com/prometheus/procfs v0.8.0 // indirect
 	github.com/turnage/redditproto v0.0.0-20151223012412-afedf1b6eddb // indirect
+	github.com/uptrace/opentelemetry-go-extra/otelutil v0.2.3 // indirect
+	go.opentelemetry.io/otel v1.18.0 // indirect
+	go.opentelemetry.io/otel/trace v1.18.0 // indirect
+	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/net v0.5.0 // indirect
 	golang.org/x/oauth2 v0.0.0-20220223155221-ee480838109b // indirect
-	golang.org/x/sys v0.4.0 // indirect
+	golang.org/x/sys v0.7.0 // indirect
 	golang.org/x/text v0.6.0 // indirect
 	google.golang.org/appengine v1.6.6 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect

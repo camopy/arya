@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"github.com/camopy/rss_everything/zaplog"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"log"
 	"net/http"
@@ -22,9 +23,12 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	logger := zaplog.Configure()
+	defer zaplog.Recover()
+
 	go startMetricsServer()
 	db := NewRedis(cfg.RedisURI)
-	bot := NewBot(db, cfg.BotConfig)
+	bot := NewBot(logger.Named("bot"), db, cfg.BotConfig)
 	bot.Start()
 }
 

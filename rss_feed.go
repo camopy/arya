@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/camopy/rss_everything/zaplog"
 	"github.com/mmcdole/gofeed"
+	"go.uber.org/zap"
 	"strconv"
 	"strings"
 	"time"
@@ -17,14 +19,16 @@ const (
 
 type RSS struct {
 	client        *gofeed.Parser
+	logger        *zaplog.Logger
 	db            DB
 	subscriptions []rssSubscription
 	contentCh     chan []Content
 }
 
-func NewRSS(contentCh chan []Content, db DB) *RSS {
+func NewRSS(logger *zaplog.Logger, contentCh chan []Content, db DB) *RSS {
 	return &RSS{
 		client:    gofeed.NewParser(),
+		logger:    logger,
 		db:        db,
 		contentCh: contentCh,
 	}
@@ -122,6 +126,7 @@ func (u *RSS) list(ctx context.Context, c *rssCommand) error {
 		return err
 	}
 	if len(subs) == 0 {
+		u.logger.Info("no subscriptions")
 		u.contentCh <- []Content{
 			{
 				threadId: c.threadId,
@@ -134,6 +139,7 @@ func (u *RSS) list(ctx context.Context, c *rssCommand) error {
 	for _, sub := range subs {
 		msg += fmt.Sprintf("%s: %s\n", sub.Url, sub.Interval)
 	}
+	u.logger.Info("retrieved subscriptions", zap.String("subscriptions", msg))
 	u.contentCh <- []Content{
 		{
 			threadId: c.threadId,
@@ -196,8 +202,10 @@ func (u *RSS) poll(ctx context.Context, sub rssSubscription) {
 		posts, err := u.fetch(ctx, sub)
 		if err != nil {
 			fmt.Println(err)
+			u.logger.Error("fetch error", zap.Error(err))
 		} else if len(posts) > 0 {
 			fmt.Printf("rss: sending %d posts to thread %d\n", len(posts), sub.ThreadId)
+			u.logger.Info("sending posts", zap.Int("count", len(posts)), zap.Int("threadId", sub.ThreadId))
 			u.contentCh <- posts
 		}
 	}

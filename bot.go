@@ -2,7 +2,8 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"github.com/camopy/rss_everything/zaplog"
+	"go.uber.org/zap"
 	"log"
 	"os"
 	"os/signal"
@@ -31,6 +32,7 @@ type BotConfig struct {
 type Bot struct {
 	cfg          BotConfig
 	client       *bot.Bot
+	logger       *zaplog.Logger
 	db           DB
 	updatesCh    chan *models.Update
 	contentsChan chan []Content
@@ -46,7 +48,7 @@ type Content struct {
 	threadId int
 }
 
-func NewBot(db DB, cfg BotConfig) *Bot {
+func NewBot(logger *zaplog.Logger, db DB, cfg BotConfig) *Bot {
 	updatesCh := make(chan *models.Update)
 
 	handler := func(ctx context.Context, b *bot.Bot, update *models.Update) {
@@ -67,6 +69,7 @@ func NewBot(db DB, cfg BotConfig) *Bot {
 	return &Bot{
 		cfg:          cfg,
 		client:       api,
+		logger:       logger,
 		db:           db,
 		contentsChan: make(chan []Content),
 		updatesCh:    updatesCh,
@@ -85,11 +88,11 @@ func (b *Bot) Start() {
 }
 
 func (b *Bot) initFeeds(ctx context.Context, cfg BotConfig) {
-	b.chatGPT = NewChatGPT(b.contentsChan, cfg.ChatGPTApiKey, cfg.ChatGPTUserName)
-	b.hackerNews = NewHackerNews(b.contentsChan, b.db, hackerNewsThreadId)
-	b.cryptoFeed = NewCryptoFeed(b.contentsChan, cryptoThreadId)
-	b.reddit = NewReddit(b.contentsChan, b.db, cfg.RedditClientId, cfg.RedditApiKey, cfg.RedditUsername, cfg.RedditPassword)
-	b.rss = NewRSS(b.contentsChan, b.db)
+	b.chatGPT = NewChatGPT(b.logger.Named("chat-gpt"), b.contentsChan, cfg.ChatGPTApiKey, cfg.ChatGPTUserName)
+	b.hackerNews = NewHackerNews(b.logger.Named("hacker-news"), b.contentsChan, b.db, hackerNewsThreadId)
+	b.cryptoFeed = NewCryptoFeed(b.logger.Named("crypto"), b.contentsChan, cryptoThreadId)
+	b.reddit = NewReddit(b.logger.Named("reddit"), b.contentsChan, b.db, cfg.RedditClientId, cfg.RedditApiKey, cfg.RedditUsername, cfg.RedditPassword)
+	b.rss = NewRSS(b.logger.Named("rss"), b.contentsChan, b.db)
 
 	go b.hackerNews.StartHackerNews()
 	go b.chatGPT.StartChatGPT()
@@ -131,7 +134,11 @@ func (b *Bot) handleMessages(ctx context.Context) {
 		if update.Message == nil {
 			continue
 		}
-		b.logMessage(update.Message.Text)
+		b.logger.Info(
+			"message received",
+			zap.Int("threadId", update.Message.MessageThreadID),
+			zap.String("msg", update.Message.Text),
+		)
 		if !b.isValidChatId(update.Message.Chat.ID) {
 			continue
 		}
@@ -144,10 +151,6 @@ func (b *Bot) handleMessages(ctx context.Context) {
 			threadId: update.Message.MessageThreadID,
 		})
 	}
-}
-
-func (b *Bot) logMessage(msg string) {
-	fmt.Printf("Message received: %s\n", msg)
 }
 
 func (b *Bot) isValidChatId(id int64) bool {

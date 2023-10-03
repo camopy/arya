@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/camopy/rss_everything/zaplog"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.uber.org/zap"
 	"log"
 	"net/http"
 	"strconv"
@@ -45,14 +47,16 @@ func trackLoadedStories(storiesLoaded int) {
 
 type HackerNews struct {
 	*http.Client
+	logger    *zaplog.Logger
 	db        DB
 	contentCh chan []Content
 	threadId  int
 }
 
-func NewHackerNews(contentCh chan []Content, db DB, threadId int) *HackerNews {
+func NewHackerNews(logger *zaplog.Logger, contentCh chan []Content, db DB, threadId int) *HackerNews {
 	return &HackerNews{
 		Client:    http.DefaultClient,
+		logger:    logger,
 		db:        db,
 		contentCh: contentCh,
 		threadId:  threadId,
@@ -63,9 +67,9 @@ func (h *HackerNews) StartHackerNews() {
 	for {
 		stories, err := h.fetch(context.Background())
 		if err != nil {
-			log.Println(err)
+			h.logger.Error("fetch error", zap.Error(err))
 		} else if len(stories) > 0 {
-			fmt.Printf("hacker-news: sending %d stories to thread %d\n", len(stories), h.threadId)
+			h.logger.Info("sending stories", zap.Int("count", len(stories)), zap.Int("threadId", h.threadId))
 			h.contentCh <- stories
 		}
 		time.Sleep(fetchInterval)
