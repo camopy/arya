@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -100,7 +99,7 @@ func (h *HackerNews) fetch(ctx context.Context) ([]commands.Content, error) {
 		}
 		story, err := h.fetchStory(id)
 		if err != nil {
-			log.Println(err)
+			h.logger.Error("fetch story error", zap.Error(err))
 			continue
 		}
 		s := story.String()

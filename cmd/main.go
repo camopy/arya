@@ -3,7 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
-	"log"
+	"go.uber.org/zap"
 	"net/http"
 	"os"
 	"strconv"
@@ -30,7 +30,7 @@ func main() {
 	logger := zaplog.Configure()
 	defer zaplog.Recover()
 
-	go startMetricsServer()
+	go startMetricsServer(logger)
 
 	telegramBot := bot.NewTelegramBot(
 		logger.Named("telegram-bot"),
@@ -111,11 +111,11 @@ func lookupEnv(key string) (string, error) {
 	return v, nil
 }
 
-func startMetricsServer() {
+func startMetricsServer(logger *zaplog.Logger) {
 	var mux http.ServeMux
 	mux.Handle("/metrics", promhttp.Handler())
-	log.Printf("starting metrics server %s", fmt.Sprintf("http://%s/metrics", metricsServerAddr))
+	logger.Info("starting metrics server", zap.String("endpoint", fmt.Sprintf("http://%s/metrics", metricsServerAddr)))
 	if err := http.ListenAndServe(metricsServerAddr, &mux); err != nil {
-		log.Fatalf("failed to start metrics server: %v", err)
+		logger.Fatal("failed to start metrics server", zap.Error(err))
 	}
 }

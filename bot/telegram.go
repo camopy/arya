@@ -4,7 +4,6 @@ import (
 	"context"
 	"github.com/camopy/rss_everything/bot/commands"
 	feeds2 "github.com/camopy/rss_everything/bot/feeds"
-	"log"
 	"os"
 	"os/signal"
 	"strings"
@@ -62,7 +61,7 @@ func NewTelegramBot(logger *zaplog.Logger, db db.DB, cfg TelegramConfig) *Telegr
 	}
 	api, err := bot.New(cfg.TelegramApiKey, opts...)
 	if err != nil {
-		log.Panic(err)
+		panic(err)
 	}
 
 	return &Telegram{
@@ -113,7 +112,7 @@ func (b *Telegram) handleFeedUpdates(ctx context.Context) {
 					},
 				)
 				if err != nil {
-					log.Println(err)
+					b.logger.Error("failed to send message", zap.Error(err))
 				}
 			}
 		}

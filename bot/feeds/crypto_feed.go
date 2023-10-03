@@ -3,7 +3,6 @@ package feeds
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"math"
 	"net/http"
 	"strings"
@@ -53,7 +52,7 @@ func (f *CryptoFeed) StartCryptoFeed() {
 		for coinId, threshold := range trackedCoins {
 			coin, err := f.fetchCoin(coinId)
 			if err != nil {
-				log.Println(err)
+				f.logger.Error("error fetching coin", zap.Error(err), zap.String("coinId", coinId))
 			} else if math.Abs(coin.PriceChange1h) > threshold {
 				coins = append(coins, *coin)
 			}
