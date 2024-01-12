@@ -96,6 +96,10 @@ func (u *Reddit) parseCommand(cmd commands.Command) (*redditCommand, error) {
 			}
 			c.interval = time.Duration(interval) * time.Minute
 
+			if c.interval.Minutes() < 60 {
+				return nil, commands.ErrInvalidIntervalDuration
+			}
+
 			if len(s) > 3 {
 				c.args = s[3:]
 			}
