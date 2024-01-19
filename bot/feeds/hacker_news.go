@@ -181,8 +181,11 @@ func (h *HackerNews) fetchStory(id int) (*Story, error) {
 }
 
 func (s *Story) String() string {
+	hnUrl := "https://news.ycombinator.com/item?id="
 	return fmt.Sprintf(`
 HN: %s - ⬆️%d
 %s
-	`, s.Title, s.Score, s.Url)
+
+%s
+	`, s.Title, s.Score, s.Url, fmt.Sprintf("%s%d", hnUrl, s.Id))
 }

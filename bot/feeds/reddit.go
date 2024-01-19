@@ -154,6 +154,7 @@ func (u *Reddit) list(ctx context.Context, c *redditCommand) error {
 	if err != nil {
 		return err
 	}
+
 	if len(subs) == 0 {
 		u.logger.Info("no subscriptions")
 		u.contentCh <- []commands.Content{
@@ -164,16 +165,25 @@ func (u *Reddit) list(ctx context.Context, c *redditCommand) error {
 		}
 		return nil
 	}
+
+	var messages []string
 	var msg string
 	for _, sub := range subs {
+		if len(msg) > 1000 {
+			messages = append(messages, msg)
+			msg = ""
+		}
 		msg += fmt.Sprintf("%s: %s\n", sub.Subreddit, sub.Interval)
 	}
+
 	u.logger.Info("retrieved subscriptions", zap.String("subscriptions", msg))
-	u.contentCh <- []commands.Content{
-		{
-			ThreadId: c.threadId,
-			Text:     msg,
-		},
+	for _, m := range messages {
+		u.contentCh <- []commands.Content{
+			{
+				ThreadId: c.threadId,
+				Text:     m,
+			},
+		}
 	}
 	return nil
 }

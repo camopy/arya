@@ -77,7 +77,7 @@ func (u *RSS) parseCommand(cmd commands.Command) (*rssCommand, error) {
 		if len(s) > 2 {
 			interval, err := strconv.Atoi(s[2])
 			if err != nil {
-				return nil, fmt.Errorf("reddit: invalid interval")
+				return nil, fmt.Errorf("rss: invalid interval")
 			}
 			c.interval = time.Duration(interval) * time.Minute
 
@@ -143,6 +143,7 @@ func (u *RSS) list(ctx context.Context, c *rssCommand) error {
 	if err != nil {
 		return err
 	}
+
 	if len(subs) == 0 {
 		u.logger.Info("no subscriptions")
 		u.contentCh <- []commands.Content{
@@ -153,16 +154,25 @@ func (u *RSS) list(ctx context.Context, c *rssCommand) error {
 		}
 		return nil
 	}
+
+	var messages []string
 	var msg string
 	for _, sub := range subs {
-		msg += fmt.Sprintf("%s: %s\n", sub.Url, sub.Interval)
+		if len(msg) > 1000 {
+			messages = append(messages, msg)
+			msg = ""
+		}
+		msg += fmt.Sprintf("%s - %s: %s\n", sub.FeedTitle, sub.Url, sub.Interval)
 	}
+
 	u.logger.Info("retrieved subscriptions", zap.String("subscriptions", msg))
-	u.contentCh <- []commands.Content{
-		{
-			ThreadId: c.threadId,
-			Text:     msg,
-		},
+	for _, m := range messages {
+		u.contentCh <- []commands.Content{
+			{
+				ThreadId: c.threadId,
+				Text:     m,
+			},
+		}
 	}
 	return nil
 }
@@ -198,7 +208,7 @@ func (u *RSS) remove(ctx context.Context, cmd *rssCommand) error {
 			u.contentCh <- []commands.Content{
 				{
 					ThreadId: cmd.threadId,
-					Text:     fmt.Sprintf("reddit: removed %s", cmd.feedTitle),
+					Text:     fmt.Sprintf("rss: removed %s", cmd.feedTitle),
 				},
 			}
 			return nil
@@ -255,9 +265,17 @@ type rssPost struct {
 	CreatedUTC uint64
 }
 
-func (p rssPost) String() string {
+func (p *rssPost) String() string {
 	return fmt.Sprintf(`%s
 %s`, p.Title, p.Permalink)
+}
+
+func (p *rssPost) isOlderThanADay() bool {
+	createdAt := time.UnixMilli(int64(p.CreatedUTC) * 1000)
+	if createdAt.IsZero() {
+		return true
+	}
+	return time.Now().Sub(createdAt) > 24*time.Hour
 }
 
 func (u *RSS) fetch(ctx context.Context, sub rssSubscription) ([]commands.Content, error) {
@@ -300,11 +318,11 @@ func (u *RSS) fetch(ctx context.Context, sub rssSubscription) ([]commands.Conten
 }
 
 func (u *RSS) isNewPost(ctx context.Context, post rssPost) (bool, error) {
-	isDubplicate, err := u.isDuplicatePost(ctx, post.FeedTitle, post.ID)
-	if err != nil || isDubplicate {
+	isDuplicatePost, err := u.isDuplicatePost(ctx, post.FeedTitle, post.ID)
+	if err != nil || isDuplicatePost {
 		return false, err
 	}
-	return !u.isOlderThanADay(post), nil
+	return !post.isOlderThanADay(), nil
 }
 
 func (u *RSS) isDuplicatePost(ctx context.Context, feedId, id string) (bool, error) {
@@ -313,11 +331,6 @@ func (u *RSS) isDuplicatePost(ctx context.Context, feedId, id string) (bool, err
 		return false, err
 	}
 	return s != nil, nil
-}
-
-func (u *RSS) isOlderThanADay(post rssPost) bool {
-	createdAt := time.UnixMilli(int64(post.CreatedUTC) * 1000)
-	return time.Now().Sub(createdAt) > 24*time.Hour
 }
 
 func (u *RSS) savePost(ctx context.Context, post rssPost) error {
