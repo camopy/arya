@@ -266,8 +266,9 @@ type rssPost struct {
 }
 
 func (p *rssPost) String() string {
-	return fmt.Sprintf(`%s
-%s`, p.Title, p.Permalink)
+	createdAt := time.UnixMilli(int64(p.CreatedUTC) * 1000)
+	return fmt.Sprintf(`%s - %s
+%s`, p.Title, createdAt.Format(time.RFC822Z), p.Permalink)
 }
 
 func (p *rssPost) isOlderThanADay() bool {
