@@ -266,13 +266,13 @@ type rssPost struct {
 }
 
 func (p *rssPost) String() string {
-	createdAt := time.UnixMilli(int64(p.CreatedUTC) * 1000)
+	createdAt := time.UnixMilli(int64(p.CreatedUTC))
 	return fmt.Sprintf(`%s - %s
 %s`, p.Title, createdAt.Format(time.RFC822Z), p.Permalink)
 }
 
 func (p *rssPost) isOlderThanADay() bool {
-	createdAt := time.UnixMilli(int64(p.CreatedUTC) * 1000)
+	createdAt := time.UnixMilli(int64(p.CreatedUTC))
 	if createdAt.IsZero() {
 		return true
 	}
