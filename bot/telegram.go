@@ -2,8 +2,6 @@ package bot
 
 import (
 	"context"
-	"github.com/camopy/rss_everything/bot/commands"
-	feeds2 "github.com/camopy/rss_everything/bot/feeds"
 	"os"
 	"os/signal"
 	"strings"
@@ -12,6 +10,8 @@ import (
 	"github.com/go-telegram/bot/models"
 	"go.uber.org/zap"
 
+	"github.com/camopy/rss_everything/bot/commands"
+	feeds "github.com/camopy/rss_everything/bot/feeds"
 	"github.com/camopy/rss_everything/db"
 	"github.com/camopy/rss_everything/zaplog"
 )
@@ -39,11 +39,11 @@ type Telegram struct {
 	db           db.DB
 	updatesCh    chan *models.Update
 	contentsChan chan []commands.Content
-	chatGPT      *feeds2.ChatGPT
-	hackerNews   *feeds2.HackerNews
-	cryptoFeed   *feeds2.CryptoFeed
-	reddit       *feeds2.Reddit
-	rss          *feeds2.RSS
+	chatGPT      *feeds.ChatGPT
+	hackerNews   *feeds.HackerNews
+	cryptoFeed   *feeds.CryptoFeed
+	reddit       *feeds.Reddit
+	rss          *feeds.RSS
 }
 
 func NewTelegramBot(logger *zaplog.Logger, db db.DB, cfg TelegramConfig) *Telegram {
@@ -86,11 +86,11 @@ func (b *Telegram) Start() {
 }
 
 func (b *Telegram) initFeeds(ctx context.Context, cfg TelegramConfig) {
-	b.chatGPT = feeds2.NewChatGPT(b.logger.Named("chat-gpt"), b.contentsChan, cfg.ChatGPTApiKey, cfg.ChatGPTUserName)
-	b.hackerNews = feeds2.NewHackerNews(b.logger.Named("hacker-news"), b.contentsChan, b.db, hackerNewsThreadId)
-	b.cryptoFeed = feeds2.NewCryptoFeed(b.logger.Named("crypto"), b.contentsChan, cryptoThreadId)
-	b.reddit = feeds2.NewReddit(b.logger.Named("reddit"), b.contentsChan, b.db, cfg.RedditClientId, cfg.RedditApiKey, cfg.RedditUsername, cfg.RedditPassword)
-	b.rss = feeds2.NewRSS(b.logger.Named("rss"), b.contentsChan, b.db)
+	b.chatGPT = feeds.NewChatGPT(b.logger.Named("chat-gpt"), b.contentsChan, cfg.ChatGPTApiKey, cfg.ChatGPTUserName)
+	b.hackerNews = feeds.NewHackerNews(b.logger.Named("hacker-news"), b.contentsChan, b.db, hackerNewsThreadId)
+	b.cryptoFeed = feeds.NewCryptoFeed(b.logger.Named("crypto"), b.contentsChan, cryptoThreadId)
+	b.reddit = feeds.NewReddit(b.logger.Named("reddit"), b.contentsChan, b.db, cfg.RedditClientId, cfg.RedditApiKey, cfg.RedditUsername, cfg.RedditPassword)
+	b.rss = feeds.NewRSS(b.logger.Named("rss"), b.contentsChan, b.db)
 
 	go b.hackerNews.StartHackerNews()
 	go b.chatGPT.StartChatGPT()

@@ -169,11 +169,16 @@ func (u *Reddit) list(ctx context.Context, c *redditCommand) error {
 	var messages []string
 	var msg string
 	for _, sub := range subs {
-		if len(msg) > 1000 {
+		newEntry := fmt.Sprintf("%s: %s\n", sub.Subreddit, sub.Interval)
+
+		if len(msg)+len(newEntry) > 1000 {
 			messages = append(messages, msg)
 			msg = ""
 		}
-		msg += fmt.Sprintf("%s: %s\n", sub.Subreddit, sub.Interval)
+		msg += newEntry
+	}
+	if len(msg) > 0 {
+		messages = append(messages, msg)
 	}
 
 	u.logger.Info("retrieved subscriptions", zap.String("subscriptions", msg))
