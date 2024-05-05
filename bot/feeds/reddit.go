@@ -26,7 +26,7 @@ type Reddit struct {
 	client        reddit.Bot
 	logger        *zaplog.Logger
 	db            db.DB
-	subscriptions []redditSubscription
+	subscriptions map[string]*redditSubscription
 	contentCh     chan []commands.Content
 }
 
@@ -47,10 +47,11 @@ func NewReddit(logger *zaplog.Logger, contentCh chan []commands.Content, db db.D
 	}
 
 	return &Reddit{
-		client:    bot,
-		logger:    logger,
-		db:        db,
-		contentCh: contentCh,
+		client:        bot,
+		logger:        logger,
+		db:            db,
+		contentCh:     contentCh,
+		subscriptions: make(map[string]*redditSubscription),
 	}
 }
 
@@ -114,6 +115,8 @@ type redditSubscription struct {
 	Subreddit string        `json:"subreddit"`
 	Interval  time.Duration `json:"interval"`
 	ThreadId  int           `json:"thread_id"`
+
+	cancelFunc context.CancelFunc
 }
 
 func (u *Reddit) add(ctx context.Context, c *redditCommand) error {
@@ -130,8 +133,10 @@ func (u *Reddit) add(ctx context.Context, c *redditCommand) error {
 	if err := u.saveSubscription(ctx, sub); err != nil {
 		return err
 	}
+	u.subscriptions[sub.Subreddit] = sub
 	u.logger.Info("subreddit added", zap.String("subreddit", c.subreddit), zap.Int("threadId", c.threadId))
-	go u.poll(ctx, *sub)
+
+	u.pollSubreddit(ctx, sub)
 	return nil
 }
 
@@ -144,7 +149,6 @@ func (u *Reddit) saveSubscription(ctx context.Context, sub *redditSubscription) 
 	if err != nil {
 		return err
 	}
-	u.subscriptions = append(u.subscriptions, *sub)
 	return nil
 }
 
@@ -213,22 +217,38 @@ func (u *Reddit) getSubscriptions(ctx context.Context) ([]redditSubscription, er
 
 func (u *Reddit) remove(ctx context.Context, cmd *redditCommand) error {
 	u.logger.Info("removing subreddit", zap.String("subreddit", cmd.subreddit), zap.Int("threadId", cmd.threadId))
-	for _, sub := range u.subscriptions {
-		if sub.Subreddit == cmd.subreddit {
-			err := u.db.Del(ctx, redditSubscriptionsTable, sub.Id)
-			if err != nil {
-				return err
-			}
-			u.logger.Info("subreddit removed", zap.String("subreddit", cmd.subreddit), zap.Int("threadId", cmd.threadId))
-			u.contentCh <- []commands.Content{
-				{
-					ThreadId: cmd.threadId,
-					Text:     fmt.Sprintf("reddit: removed %s", cmd.subreddit),
-				},
-			}
-			return nil
+	if err := u.removeSubscription(ctx, cmd); err != nil {
+		u.contentCh <- []commands.Content{
+			{
+				ThreadId: cmd.threadId,
+				Text:     err.Error(),
+			},
 		}
 	}
+	return nil
+}
+
+func (u *Reddit) removeSubscription(ctx context.Context, cmd *redditCommand) error {
+	sub, exists := u.subscriptions[cmd.subreddit]
+	if !exists {
+		return fmt.Errorf("reddit: not found %s", cmd.subreddit)
+	}
+
+	err := u.db.Del(ctx, redditSubscriptionsTable, sub.Id)
+	if err != nil {
+		return err
+	}
+	delete(u.subscriptions, cmd.subreddit)
+	sub.cancelFunc()
+
+	u.logger.Info("subreddit removed", zap.String("subreddit", cmd.subreddit), zap.Int("threadId", cmd.threadId))
+	u.contentCh <- []commands.Content{
+		{
+			ThreadId: cmd.threadId,
+			Text:     fmt.Sprintf("reddit: removed %s", cmd.subreddit),
+		},
+	}
+
 	return nil
 }
 
@@ -238,10 +258,17 @@ func (u *Reddit) StartReddit(ctx context.Context) {
 	if err != nil && !u.db.IsErrNotFound(err) {
 		panic(err)
 	}
-	u.subscriptions = subs
+
 	for _, sub := range subs {
-		go u.poll(ctx, sub)
+		u.subscriptions[sub.Subreddit] = &sub
+		u.pollSubreddit(ctx, &sub)
 	}
+}
+
+func (u *Reddit) pollSubreddit(ctx context.Context, sub *redditSubscription) {
+	ctx, cancel := context.WithCancel(ctx)
+	sub.cancelFunc = cancel
+	go u.poll(ctx, *sub)
 }
 
 func (u *Reddit) poll(ctx context.Context, sub redditSubscription) {
