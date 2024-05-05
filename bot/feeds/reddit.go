@@ -133,7 +133,7 @@ func (u *Reddit) add(ctx context.Context, c *redditCommand) error {
 	if err := u.saveSubscription(ctx, sub); err != nil {
 		return err
 	}
-	u.subscriptions[sub.Subreddit] = sub
+	u.addSubscription(sub)
 	u.logger.Info("subreddit added", zap.String("subreddit", c.subreddit), zap.Int("threadId", c.threadId))
 
 	u.pollSubreddit(ctx, sub)
@@ -154,12 +154,8 @@ func (u *Reddit) saveSubscription(ctx context.Context, sub *redditSubscription) 
 
 func (u *Reddit) list(ctx context.Context, c *redditCommand) error {
 	u.logger.Info("listing subscriptions", zap.Int("threadId", c.threadId))
-	subs, err := u.getSubscriptions(ctx)
-	if err != nil {
-		return err
-	}
 
-	if len(subs) == 0 {
+	if len(u.subscriptions) == 0 {
 		u.logger.Info("no subscriptions")
 		u.contentCh <- []commands.Content{
 			{
@@ -172,7 +168,7 @@ func (u *Reddit) list(ctx context.Context, c *redditCommand) error {
 
 	var messages []string
 	var msg string
-	for _, sub := range subs {
+	for _, sub := range u.subscriptions {
 		newEntry := fmt.Sprintf("%s: %s\n", sub.Subreddit, sub.Interval)
 
 		if len(msg)+len(newEntry) > 1000 {
@@ -229,9 +225,9 @@ func (u *Reddit) remove(ctx context.Context, cmd *redditCommand) error {
 }
 
 func (u *Reddit) removeSubscription(ctx context.Context, cmd *redditCommand) error {
-	sub, exists := u.subscriptions[cmd.subreddit]
-	if !exists {
-		return fmt.Errorf("reddit: not found %s", cmd.subreddit)
+	sub := u.findSubscription(cmd.subreddit)
+	if sub == nil {
+		return fmt.Errorf("reddit: subreddit %s not found", cmd.subreddit)
 	}
 
 	err := u.db.Del(ctx, redditSubscriptionsTable, sub.Id)
@@ -260,9 +256,19 @@ func (u *Reddit) StartReddit(ctx context.Context) {
 	}
 
 	for _, sub := range subs {
-		u.subscriptions[sub.Subreddit] = &sub
+		u.addSubscription(&sub)
 		u.pollSubreddit(ctx, &sub)
 	}
+}
+
+func (u *Reddit) addSubscription(sub *redditSubscription) {
+	key := strings.ToLower(sub.Subreddit)
+	u.subscriptions[key] = sub
+}
+
+func (u *Reddit) findSubscription(subreddit string) *redditSubscription {
+	key := strings.ToLower(subreddit)
+	return u.subscriptions[key]
 }
 
 func (u *Reddit) pollSubreddit(ctx context.Context, sub *redditSubscription) {
