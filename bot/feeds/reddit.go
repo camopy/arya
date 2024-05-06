@@ -14,6 +14,7 @@ import (
 
 	"github.com/camopy/rss_everything/bot/commands"
 	"github.com/camopy/rss_everything/db"
+	ge "github.com/camopy/rss_everything/util/generics"
 	"github.com/camopy/rss_everything/util/psub"
 	"github.com/camopy/rss_everything/util/run"
 	"github.com/camopy/rss_everything/zaplog"
@@ -129,7 +130,7 @@ func (u *Reddit) add(ctx context.Context, c *redditCommand) error {
 		c.subreddit = "/r/" + c.subreddit
 	}
 
-	sub := &redditSubscription{
+	sub := redditSubscription{
 		Subreddit: c.subreddit,
 		Interval:  c.interval,
 		ThreadId:  c.threadId,
@@ -137,14 +138,14 @@ func (u *Reddit) add(ctx context.Context, c *redditCommand) error {
 	if err := u.saveSubscription(ctx, sub); err != nil {
 		return err
 	}
-	u.addSubscription(sub)
+	u.addSubscription(&sub)
 	u.logger.Info("subreddit added", zap.String("subreddit", c.subreddit), zap.Int("threadId", c.threadId))
 
-	u.pollSubreddit(ctx, sub)
+	u.pollSubreddit(ctx, &sub)
 	return nil
 }
 
-func (u *Reddit) saveSubscription(ctx context.Context, sub *redditSubscription) error {
+func (u *Reddit) saveSubscription(ctx context.Context, sub redditSubscription) error {
 	b, err := json.Marshal(sub)
 	if err != nil {
 		return err
@@ -184,16 +185,12 @@ func (u *Reddit) list(ctx context.Context, c *redditCommand) error {
 		messages = append(messages, msg)
 	}
 
-	u.logger.Info("retrieved subscriptions", zap.String("subscriptions", msg))
-	for _, m := range messages {
-		_ = u.contentPublisher.SendData(ctx, []commands.Content{
-			{
-				ThreadId: c.threadId,
-				Text:     m,
-			},
-		})
-	}
-	return nil
+	return u.contentPublisher.SendData(ctx, ge.Map(messages, func(message string) commands.Content {
+		return commands.Content{
+			Text:     message,
+			ThreadId: c.threadId,
+		}
+	}))
 }
 
 func (u *Reddit) getSubscriptions(ctx context.Context) ([]redditSubscription, error) {
@@ -260,7 +257,8 @@ func (u *Reddit) Start(ctx run.Context) error {
 		panic(err)
 	}
 
-	for _, sub := range subs {
+	for i := range subs {
+		sub := subs[i]
 		u.addSubscription(&sub)
 		u.pollSubreddit(ctx, &sub)
 	}
@@ -281,12 +279,12 @@ func (u *Reddit) findSubscription(subreddit string) *redditSubscription {
 func (u *Reddit) pollSubreddit(ctx context.Context, sub *redditSubscription) {
 	ctx, cancel := context.WithCancel(ctx)
 	sub.cancelFunc = cancel
-	go u.poll(ctx, *sub)
+	go u.poll(ctx, sub)
 }
 
-func (u *Reddit) poll(ctx context.Context, sub redditSubscription) {
+func (u *Reddit) poll(ctx context.Context, sub *redditSubscription) {
 	u.logger.Info("polling subreddit", zap.String("subreddit", sub.Subreddit), zap.Int("threadId", sub.ThreadId))
-	fetch := func(ctx context.Context, sub redditSubscription) {
+	fetch := func(ctx context.Context, sub *redditSubscription) {
 		posts, err := u.fetch(ctx, sub)
 		if err != nil {
 			u.logger.Error("error fetching posts", zap.Error(err))
@@ -336,7 +334,7 @@ func (p redditPost) String() string {
 %s`, p.Subreddit, p.Title, p.Score, links)
 }
 
-func (u *Reddit) fetch(ctx context.Context, sub redditSubscription) ([]commands.Content, error) {
+func (u *Reddit) fetch(ctx context.Context, sub *redditSubscription) ([]commands.Content, error) {
 	u.logger.Info("fetching posts", zap.String("subreddit", sub.Subreddit), zap.Int("threadId", sub.ThreadId))
 	harvest, err := u.client.ListingWithParams(sub.Subreddit, map[string]string{
 		"limit": strconv.Itoa(redditFetchLimit),
