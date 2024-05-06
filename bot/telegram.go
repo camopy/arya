@@ -2,8 +2,6 @@ package bot
 
 import (
 	"context"
-	"os"
-	"os/signal"
 	"strings"
 
 	"github.com/go-telegram/bot"
@@ -13,6 +11,8 @@ import (
 	"github.com/camopy/rss_everything/bot/commands"
 	feeds "github.com/camopy/rss_everything/bot/feeds"
 	"github.com/camopy/rss_everything/db"
+	"github.com/camopy/rss_everything/util/psub"
+	"github.com/camopy/rss_everything/util/run"
 	"github.com/camopy/rss_everything/zaplog"
 )
 
@@ -33,98 +33,97 @@ type TelegramConfig struct {
 }
 
 type Telegram struct {
-	cfg          TelegramConfig
-	client       *bot.Bot
-	logger       *zaplog.Logger
-	db           db.DB
-	updatesCh    chan *models.Update
-	contentsChan chan []commands.Content
-	chatGPT      *feeds.ChatGPT
-	hackerNews   *feeds.HackerNews
-	cryptoFeed   *feeds.CryptoFeed
-	reddit       *feeds.Reddit
-	rss          *feeds.RSS
+	cfg    TelegramConfig
+	client *bot.Bot
+	logger *zaplog.Logger
+	db     db.DB
+
+	chatGPT    *feeds.ChatGPT
+	hackerNews *feeds.HackerNews
+	cryptoFeed *feeds.CryptoFeed
+	reddit     *feeds.Reddit
+	rss        *feeds.RSS
+
+	telegramSubscriber psub.Subscriber[*models.Update]
+	telegramPublisher  psub.Publisher[*models.Update]
+	contentSubscriber  psub.Subscriber[[]commands.Content]
+	contentPublisher   psub.Publisher[[]commands.Content]
 }
 
 func NewTelegramBot(logger *zaplog.Logger, db db.DB, cfg TelegramConfig) *Telegram {
-	updatesCh := make(chan *models.Update)
+	telegramSubscriber, telegramPublisher := psub.NewSubscriber[*models.Update](
+		psub.WithSubscriberName("telegram-updates"),
+		psub.WithSubscriberSubscriptionOptions(psub.WithSubscriptionBlocking(true)),
+	)
+
+	contentSubscriber, contentPublisher := psub.NewSubscriber[[]commands.Content](
+		psub.WithSubscriberName("content-updates"),
+		psub.WithSubscriberSubscriptionOptions(psub.WithSubscriptionBlocking(true)),
+	)
 
 	handler := func(ctx context.Context, b *bot.Bot, update *models.Update) {
 		if update.Message == nil {
 			return
 		}
-		updatesCh <- update
+		_ = telegramPublisher.SendData(ctx, update)
 	}
-
 	opts := []bot.Option{
 		bot.WithDefaultHandler(handler),
 	}
-	api, err := bot.New(cfg.TelegramApiKey, opts...)
+	client, err := bot.New(cfg.TelegramApiKey, opts...)
 	if err != nil {
 		panic(err)
 	}
 
 	return &Telegram{
-		cfg:          cfg,
-		client:       api,
-		logger:       logger,
-		db:           db,
-		contentsChan: make(chan []commands.Content),
-		updatesCh:    updatesCh,
+		cfg:    cfg,
+		client: client,
+		logger: logger,
+		db:     db,
+
+		telegramSubscriber: telegramSubscriber,
+		telegramPublisher:  telegramPublisher,
+		contentSubscriber:  contentSubscriber,
+		contentPublisher:   contentPublisher,
 	}
 }
 
-func (b *Telegram) Start() {
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer cancel()
+func (b *Telegram) Name() string {
+	return "telegram-service"
+}
 
-	go b.handleFeedUpdates(ctx)
-	go b.handleMessages(ctx)
+func (b *Telegram) Start(ctx run.Context) error {
+	ctx.Go("handle-feed-updates", b.handleFeedUpdates)
+	ctx.Go("handle-messages", b.handleMessages)
 
 	b.initFeeds(ctx, b.cfg)
 	b.client.Start(ctx)
+
+	return nil
 }
 
-func (b *Telegram) initFeeds(ctx context.Context, cfg TelegramConfig) {
-	b.chatGPT = feeds.NewChatGPT(b.logger.Named("chat-gpt"), b.contentsChan, cfg.ChatGPTApiKey, cfg.ChatGPTUserName)
-	b.hackerNews = feeds.NewHackerNews(b.logger.Named("hacker-news"), b.contentsChan, b.db, hackerNewsThreadId)
-	b.cryptoFeed = feeds.NewCryptoFeed(b.logger.Named("crypto"), b.contentsChan, cryptoThreadId)
-	b.reddit = feeds.NewReddit(b.logger.Named("reddit"), b.contentsChan, b.db, cfg.RedditClientId, cfg.RedditApiKey, cfg.RedditUsername, cfg.RedditPassword)
-	b.rss = feeds.NewRSS(b.logger.Named("rss"), b.contentsChan, b.db)
-
-	go b.hackerNews.StartHackerNews()
-	go b.chatGPT.StartChatGPT()
-	go b.cryptoFeed.StartCryptoFeed()
-	go b.reddit.StartReddit(ctx)
-	go b.rss.StartRSS(ctx)
-}
-
-func (b *Telegram) handleFeedUpdates(ctx context.Context) {
-	for {
-		select {
-		case contents := <-b.contentsChan:
-			for _, c := range contents {
-				_, err := b.client.SendMessage(
-					ctx, &bot.SendMessageParams{
-						ChatID:          b.cfg.ChatId,
-						Text:            c.Text,
-						MessageThreadID: c.ThreadId,
-					},
+func (b *Telegram) handleFeedUpdates(ctx context.Context) error {
+	return psub.ProcessWithContext(ctx, b.contentSubscriber.Subscribe(ctx), func(ctx context.Context, contents []commands.Content) error {
+		for _, c := range contents {
+			if _, err := b.client.SendMessage(ctx, &bot.SendMessageParams{
+				ChatID:          b.cfg.ChatId,
+				Text:            c.Text,
+				MessageThreadID: c.ThreadId,
+			},
+			); err != nil {
+				b.logger.Error(
+					"failed to send message",
+					zap.Error(err),
+					zap.Int("threadId", c.ThreadId),
+					zap.String("msg", c.Text),
 				)
-				if err != nil {
-					b.logger.Error(
-						"failed to send message",
-						zap.Error(err),
-						zap.Int("threadId", c.ThreadId),
-						zap.String("msg", c.Text),
-					)
-				}
 			}
 		}
-	}
+		return nil
+	})
 }
 
-func (b *Telegram) handleMessages(ctx context.Context) {
+func (b *Telegram) handleMessages(ctx context.Context) error {
 	isCommand := func(m *models.Message) bool {
 		if m.Entities == nil || len(m.Entities) == 0 {
 			return false
@@ -133,10 +132,7 @@ func (b *Telegram) handleMessages(ctx context.Context) {
 		return entity.Offset == 0 && entity.Type == "bot_command"
 	}
 
-	for update := range b.updatesCh {
-		if update.Message == nil {
-			continue
-		}
+	return psub.ProcessWithContext(ctx, b.telegramSubscriber.Subscribe(ctx), func(ctx context.Context, update *models.Update) error {
 		b.logger.Info(
 			"message received",
 			zap.Int("threadId", update.Message.MessageThreadID),
@@ -144,17 +140,18 @@ func (b *Telegram) handleMessages(ctx context.Context) {
 		)
 		if !b.isValidChatId(update.Message.Chat.ID) {
 			b.logger.Info("invalid chat id", zap.Int64("chatId", update.Message.Chat.ID))
-			continue
+			return nil
 		}
 		if isCommand(update.Message) {
 			b.handleCommand(ctx, update)
-			continue
+			return nil
 		}
-		b.chatGPT.Ask(commands.Content{
+		b.chatGPT.ProcessPrompt(ctx, commands.Content{
 			Text:     update.Message.Text,
 			ThreadId: update.Message.MessageThreadID,
 		})
-	}
+		return nil
+	})
 }
 
 func (b *Telegram) isValidChatId(id int64) bool {
@@ -183,4 +180,18 @@ func (b *Telegram) handleCommand(ctx context.Context, update *models.Update) {
 			b.logger.Error("rss command failed", zap.Error(err))
 		}
 	}
+}
+
+func (b *Telegram) initFeeds(ctx run.Context, cfg TelegramConfig) {
+	b.chatGPT = feeds.NewChatGPT(b.logger.Named("chat-gpt"), b.contentPublisher, cfg.ChatGPTApiKey, cfg.ChatGPTUserName)
+	b.hackerNews = feeds.NewHackerNews(b.logger.Named("hacker-news"), b.contentPublisher, b.db, hackerNewsThreadId)
+	b.cryptoFeed = feeds.NewCryptoFeed(b.logger.Named("crypto"), b.contentPublisher, cryptoThreadId)
+	b.reddit = feeds.NewReddit(b.logger.Named("reddit"), b.contentPublisher, b.db, cfg.RedditClientId, cfg.RedditApiKey, cfg.RedditUsername, cfg.RedditPassword)
+	b.rss = feeds.NewRSS(b.logger.Named("rss"), b.contentPublisher, b.db)
+
+	ctx.Start(b.hackerNews)
+	ctx.Start(b.chatGPT)
+	ctx.Start(b.cryptoFeed)
+	ctx.Start(b.reddit)
+	ctx.Start(b.rss)
 }

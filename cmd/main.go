@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"go.uber.org/zap"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/camopy/rss_everything/bot"
 	"github.com/camopy/rss_everything/db"
+	. "github.com/camopy/rss_everything/util/run"
 	"github.com/camopy/rss_everything/zaplog"
 )
 
@@ -37,7 +39,9 @@ func main() {
 		db.NewRedis(cfg.RedisURI),
 		cfg.BotConfig,
 	)
-	telegramBot.Start()
+
+	ctx := NewContext(context.Background(), logger.Named("run"), "main")
+	ctx.Start(telegramBot)
 }
 
 func decodeEnv() (*Config, error) {

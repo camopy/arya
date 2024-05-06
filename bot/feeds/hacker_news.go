@@ -14,6 +14,8 @@ import (
 	"github.com/camopy/rss_everything/bot/commands"
 	"github.com/camopy/rss_everything/db"
 	"github.com/camopy/rss_everything/metrics"
+	"github.com/camopy/rss_everything/util/psub"
+	"github.com/camopy/rss_everything/util/run"
 	"github.com/camopy/rss_everything/zaplog"
 )
 
@@ -51,34 +53,46 @@ func trackLoadedStories(storiesLoaded int) {
 
 type HackerNews struct {
 	*http.Client
-	logger    *zaplog.Logger
-	db        db.DB
-	contentCh chan []commands.Content
-	threadId  int
+	logger   *zaplog.Logger
+	db       db.DB
+	threadId int
+
+	contentPublisher psub.Publisher[[]commands.Content]
 }
 
-func NewHackerNews(logger *zaplog.Logger, contentCh chan []commands.Content, db db.DB, threadId int) *HackerNews {
+func NewHackerNews(logger *zaplog.Logger, contentPublisher psub.Publisher[[]commands.Content], db db.DB, threadId int) *HackerNews {
 	return &HackerNews{
-		Client:    http.DefaultClient,
-		logger:    logger,
-		db:        db,
-		contentCh: contentCh,
-		threadId:  threadId,
+		Client:   http.DefaultClient,
+		logger:   logger,
+		db:       db,
+		threadId: threadId,
+
+		contentPublisher: contentPublisher,
 	}
 }
 
-func (h *HackerNews) StartHackerNews() {
+func (h *HackerNews) Name() string {
+	return "hacker-news"
+}
+
+func (h *HackerNews) Start(ctx run.Context) error {
 	h.logger.Info("starting hacker news")
-	for {
-		stories, err := h.fetch(context.Background())
-		if err != nil {
-			h.logger.Error("fetch error", zap.Error(err))
-		} else if len(stories) > 0 {
-			h.logger.Info("sending stories", zap.Int("count", len(stories)), zap.Int("threadId", h.threadId))
-			h.contentCh <- stories
-		}
-		time.Sleep(fetchInterval)
+	ctx.Go("fetch-stories", run.Periodically(h.logger, 0, fetchInterval, h.fetchStories))
+	return nil
+}
+
+func (h *HackerNews) fetchStories(ctx context.Context) error {
+	stories, err := h.fetch(ctx)
+	if err != nil {
+		h.logger.Error("fetch error", zap.Error(err))
+		return err
 	}
+
+	if len(stories) > 0 {
+		h.logger.Info("sending stories", zap.Int("count", len(stories)), zap.Int("threadId", h.threadId))
+		return h.contentPublisher.SendData(ctx, stories)
+	}
+	return nil
 }
 
 func (h *HackerNews) fetch(ctx context.Context) ([]commands.Content, error) {

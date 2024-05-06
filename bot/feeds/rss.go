@@ -13,6 +13,8 @@ import (
 
 	"github.com/camopy/rss_everything/bot/commands"
 	"github.com/camopy/rss_everything/db"
+	"github.com/camopy/rss_everything/util/psub"
+	"github.com/camopy/rss_everything/util/run"
 	"github.com/camopy/rss_everything/zaplog"
 )
 
@@ -22,19 +24,20 @@ const (
 )
 
 type RSS struct {
-	client        *gofeed.Parser
-	logger        *zaplog.Logger
-	db            db.DB
-	subscriptions []rssSubscription
-	contentCh     chan []commands.Content
+	client           *gofeed.Parser
+	logger           *zaplog.Logger
+	db               db.DB
+	subscriptions    []rssSubscription
+	contentPublisher psub.Publisher[[]commands.Content]
 }
 
-func NewRSS(logger *zaplog.Logger, contentCh chan []commands.Content, db db.DB) *RSS {
+func NewRSS(logger *zaplog.Logger, contentPublisher psub.Publisher[[]commands.Content], db db.DB) *RSS {
 	return &RSS{
-		client:    gofeed.NewParser(),
-		logger:    logger,
-		db:        db,
-		contentCh: contentCh,
+		client: gofeed.NewParser(),
+		logger: logger,
+		db:     db,
+
+		contentPublisher: contentPublisher,
 	}
 }
 
@@ -146,13 +149,12 @@ func (u *RSS) list(ctx context.Context, c *rssCommand) error {
 
 	if len(subs) == 0 {
 		u.logger.Info("no subscriptions")
-		u.contentCh <- []commands.Content{
+		return u.contentPublisher.SendData(ctx, []commands.Content{
 			{
 				ThreadId: c.threadId,
 				Text:     "No subscriptions",
 			},
-		}
-		return nil
+		})
 	}
 
 	var messages []string
@@ -167,12 +169,12 @@ func (u *RSS) list(ctx context.Context, c *rssCommand) error {
 
 	u.logger.Info("retrieved subscriptions", zap.String("subscriptions", msg))
 	for _, m := range messages {
-		u.contentCh <- []commands.Content{
+		_ = u.contentPublisher.SendData(ctx, []commands.Content{
 			{
 				ThreadId: c.threadId,
 				Text:     m,
 			},
-		}
+		})
 	}
 	return nil
 }
@@ -205,19 +207,22 @@ func (u *RSS) remove(ctx context.Context, cmd *rssCommand) error {
 				return err
 			}
 			u.logger.Info("subscription removed", zap.String("feedTitle", cmd.feedTitle))
-			u.contentCh <- []commands.Content{
+			return u.contentPublisher.SendData(ctx, []commands.Content{
 				{
 					ThreadId: cmd.threadId,
 					Text:     fmt.Sprintf("rss: removed %s", cmd.feedTitle),
 				},
-			}
-			return nil
+			})
 		}
 	}
 	return nil
 }
 
-func (u *RSS) StartRSS(ctx context.Context) {
+func (u *RSS) Name() string {
+	return "rss-service"
+}
+
+func (u *RSS) Start(ctx run.Context) error {
 	u.logger.Info("starting rss")
 	subs, err := u.getSubscriptions(ctx)
 	if err != nil && !u.db.IsErrNotFound(err) {
@@ -227,6 +232,7 @@ func (u *RSS) StartRSS(ctx context.Context) {
 	for _, sub := range subs {
 		go u.poll(ctx, sub)
 	}
+	return nil
 }
 
 func (u *RSS) poll(ctx context.Context, sub rssSubscription) {
@@ -238,7 +244,7 @@ func (u *RSS) poll(ctx context.Context, sub rssSubscription) {
 			u.logger.Error("fetch error", zap.Error(err))
 		} else if len(posts) > 0 {
 			u.logger.Info("sending posts", zap.Int("count", len(posts)), zap.Int("threadId", sub.ThreadId))
-			u.contentCh <- posts
+			_ = u.contentPublisher.SendData(ctx, posts)
 		}
 		u.logger.Info("polling done", zap.String("url", sub.Url), zap.Int("threadId", sub.ThreadId), zap.Int("new posts", len(posts)))
 	}

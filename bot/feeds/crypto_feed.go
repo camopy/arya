@@ -1,6 +1,7 @@
 package feeds
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"go.uber.org/zap"
@@ -11,6 +12,8 @@ import (
 
 	"github.com/camopy/rss_everything/bot/commands"
 	"github.com/camopy/rss_everything/metrics"
+	"github.com/camopy/rss_everything/util/psub"
+	"github.com/camopy/rss_everything/util/run"
 	"github.com/camopy/rss_everything/zaplog"
 )
 
@@ -35,39 +38,47 @@ var trackedCoins = map[string]float64{
 }
 
 type CryptoFeed struct {
-	client    *http.Client
-	logger    *zaplog.Logger
-	contentCh chan []commands.Content
-	threadId  int
+	client   *http.Client
+	logger   *zaplog.Logger
+	threadId int
+
+	contentPublisher psub.Publisher[[]commands.Content]
 }
 
-func NewCryptoFeed(logger *zaplog.Logger, contentCh chan []commands.Content, threadId int) *CryptoFeed {
-	return &CryptoFeed{client: http.DefaultClient, logger: logger, contentCh: contentCh, threadId: threadId}
+func NewCryptoFeed(logger *zaplog.Logger, contentPublisher psub.Publisher[[]commands.Content], threadId int) *CryptoFeed {
+	return &CryptoFeed{client: http.DefaultClient, logger: logger, contentPublisher: contentPublisher, threadId: threadId}
 }
 
-func (f *CryptoFeed) StartCryptoFeed() {
+func (f *CryptoFeed) Name() string {
+	return "crypto-service"
+}
+
+func (f *CryptoFeed) Start(ctx run.Context) error {
 	f.logger.Info("starting crypto feed")
-	for {
-		var coins = make([]Coin, 0, len(trackedCoins))
-		for coinId, threshold := range trackedCoins {
-			coin, err := f.fetchCoin(coinId)
-			if err != nil {
-				f.logger.Error("error fetching coin", zap.Error(err), zap.String("coinId", coinId))
-			} else if math.Abs(coin.PriceChange1h) > threshold {
-				coins = append(coins, *coin)
-			}
+	ctx.Go("fetch-coin-prices", run.Periodically(f.logger, 0, cryptoFetchInterval, f.fetchCoinPrices))
+	return nil
+}
+
+func (f *CryptoFeed) fetchCoinPrices(ctx context.Context) error {
+	var coins = make([]Coin, 0, len(trackedCoins))
+	for coinId, threshold := range trackedCoins {
+		coin, err := f.fetchCoin(coinId)
+		if err != nil {
+			f.logger.Error("error fetching coin", zap.Error(err), zap.String("coinId", coinId))
+		} else if math.Abs(coin.PriceChange1h) > threshold {
+			coins = append(coins, *coin)
 		}
-		if len(coins) > 0 {
-			f.logger.Info("sending coins", zap.Int("count", len(coins)), zap.Int("threadId", f.threadId))
-			f.contentCh <- []commands.Content{
-				{
-					Text:     Coins(coins).String(),
-					ThreadId: f.threadId,
-				},
-			}
-		}
-		time.Sleep(cryptoFetchInterval)
 	}
+	if len(coins) > 0 {
+		f.logger.Info("sending coins", zap.Int("count", len(coins)), zap.Int("threadId", f.threadId))
+		return f.contentPublisher.SendData(ctx, []commands.Content{
+			{
+				Text:     Coins(coins).String(),
+				ThreadId: f.threadId,
+			},
+		})
+	}
+	return nil
 }
 
 type Coins []Coin

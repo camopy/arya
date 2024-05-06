@@ -14,6 +14,8 @@ import (
 
 	"github.com/camopy/rss_everything/bot/commands"
 	"github.com/camopy/rss_everything/db"
+	"github.com/camopy/rss_everything/util/psub"
+	"github.com/camopy/rss_everything/util/run"
 	"github.com/camopy/rss_everything/zaplog"
 )
 
@@ -27,10 +29,11 @@ type Reddit struct {
 	logger        *zaplog.Logger
 	db            db.DB
 	subscriptions map[string]*redditSubscription
-	contentCh     chan []commands.Content
+
+	contentPublisher psub.Publisher[[]commands.Content]
 }
 
-func NewReddit(logger *zaplog.Logger, contentCh chan []commands.Content, db db.DB, id string, key string, username string, password string) *Reddit {
+func NewReddit(logger *zaplog.Logger, contentPublisher psub.Publisher[[]commands.Content], db db.DB, id string, key string, username string, password string) *Reddit {
 	cfg := reddit.BotConfig{
 		Agent: "rss_feed:1:0.1 (by /u/BurnInNoia)",
 		App: reddit.App{
@@ -50,8 +53,9 @@ func NewReddit(logger *zaplog.Logger, contentCh chan []commands.Content, db db.D
 		client:        bot,
 		logger:        logger,
 		db:            db,
-		contentCh:     contentCh,
 		subscriptions: make(map[string]*redditSubscription),
+
+		contentPublisher: contentPublisher,
 	}
 }
 
@@ -157,13 +161,12 @@ func (u *Reddit) list(ctx context.Context, c *redditCommand) error {
 
 	if len(u.subscriptions) == 0 {
 		u.logger.Info("no subscriptions")
-		u.contentCh <- []commands.Content{
+		return u.contentPublisher.SendData(ctx, []commands.Content{
 			{
 				ThreadId: c.threadId,
 				Text:     "No subscriptions",
 			},
-		}
-		return nil
+		})
 	}
 
 	var messages []string
@@ -183,12 +186,12 @@ func (u *Reddit) list(ctx context.Context, c *redditCommand) error {
 
 	u.logger.Info("retrieved subscriptions", zap.String("subscriptions", msg))
 	for _, m := range messages {
-		u.contentCh <- []commands.Content{
+		_ = u.contentPublisher.SendData(ctx, []commands.Content{
 			{
 				ThreadId: c.threadId,
 				Text:     m,
 			},
-		}
+		})
 	}
 	return nil
 }
@@ -214,12 +217,12 @@ func (u *Reddit) getSubscriptions(ctx context.Context) ([]redditSubscription, er
 func (u *Reddit) remove(ctx context.Context, cmd *redditCommand) error {
 	u.logger.Info("removing subreddit", zap.String("subreddit", cmd.subreddit), zap.Int("threadId", cmd.threadId))
 	if err := u.removeSubscription(ctx, cmd); err != nil {
-		u.contentCh <- []commands.Content{
+		return u.contentPublisher.SendData(ctx, []commands.Content{
 			{
 				ThreadId: cmd.threadId,
 				Text:     err.Error(),
 			},
-		}
+		})
 	}
 	return nil
 }
@@ -238,17 +241,19 @@ func (u *Reddit) removeSubscription(ctx context.Context, cmd *redditCommand) err
 	sub.cancelFunc()
 
 	u.logger.Info("subreddit removed", zap.String("subreddit", cmd.subreddit), zap.Int("threadId", cmd.threadId))
-	u.contentCh <- []commands.Content{
+	return u.contentPublisher.SendData(ctx, []commands.Content{
 		{
 			ThreadId: cmd.threadId,
 			Text:     fmt.Sprintf("reddit: removed %s", cmd.subreddit),
 		},
-	}
-
-	return nil
+	})
 }
 
-func (u *Reddit) StartReddit(ctx context.Context) {
+func (u *Reddit) Name() string {
+	return "reddit-service"
+}
+
+func (u *Reddit) Start(ctx run.Context) error {
 	u.logger.Info("starting reddit")
 	subs, err := u.getSubscriptions(ctx)
 	if err != nil && !u.db.IsErrNotFound(err) {
@@ -259,6 +264,8 @@ func (u *Reddit) StartReddit(ctx context.Context) {
 		u.addSubscription(&sub)
 		u.pollSubreddit(ctx, &sub)
 	}
+
+	return nil
 }
 
 func (u *Reddit) addSubscription(sub *redditSubscription) {
@@ -285,7 +292,7 @@ func (u *Reddit) poll(ctx context.Context, sub redditSubscription) {
 			u.logger.Error("error fetching posts", zap.Error(err))
 		} else if len(posts) > 0 {
 			u.logger.Info("sending posts", zap.Int("count", len(posts)), zap.Int("threadId", sub.ThreadId))
-			u.contentCh <- posts
+			_ = u.contentPublisher.SendData(ctx, posts)
 		}
 		u.logger.Info("finished polling subreddit", zap.String("subreddit", sub.Subreddit), zap.Int("threadId", sub.ThreadId), zap.Int("new posts", len(posts)))
 	}

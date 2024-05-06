@@ -10,6 +10,8 @@ import (
 
 	"github.com/camopy/rss_everything/bot/commands"
 	"github.com/camopy/rss_everything/metrics"
+	"github.com/camopy/rss_everything/util/psub"
+	"github.com/camopy/rss_everything/util/run"
 	"github.com/camopy/rss_everything/zaplog"
 )
 
@@ -31,44 +33,49 @@ type ChatGPT struct {
 	*gogpt.Client
 	logger        *zaplog.Logger
 	userName      string
-	contentCh     chan []commands.Content
-	promptCh      chan commands.Content
 	defaultPrompt string
+
+	contentPublisher psub.Publisher[[]commands.Content]
 }
 
-func NewChatGPT(logger *zaplog.Logger, contentCh chan []commands.Content, apiKey string, userName string) *ChatGPT {
+func NewChatGPT(logger *zaplog.Logger, contentPublisher psub.Publisher[[]commands.Content], apiKey string, userName string) *ChatGPT {
 	return &ChatGPT{
 		Client:        gogpt.NewClient(apiKey),
 		logger:        logger,
 		userName:      userName,
-		contentCh:     contentCh,
-		promptCh:      make(chan commands.Content),
 		defaultPrompt: fmt.Sprintf(defaultPrompt, userName, userName, "%s"),
+
+		contentPublisher: contentPublisher,
 	}
 }
 
-func (c *ChatGPT) StartChatGPT() {
+func (c *ChatGPT) Name() string {
+	return "chat-gpt-service"
+}
+
+func (c *ChatGPT) Start(ctx run.Context) error {
 	c.logger.Info("starting chat gpt")
-	for {
-		select {
-		case prompt := <-c.promptCh:
-			resp, err := c.ask(prompt.Text)
-			if err != nil {
-				c.logger.Error("failed to ask", zap.Error(err))
-			}
-			c.logger.Info("sending answer", zap.Int("threadId", prompt.ThreadId))
-			c.contentCh <- []commands.Content{
-				{
-					Text:     resp,
-					ThreadId: prompt.ThreadId,
-				},
-			}
-		}
-	}
+	return nil
 }
 
-func (c *ChatGPT) ask(prompt string) (string, error) {
-	c.logger.Info("asking", zap.String("prompt", prompt))
+func (c *ChatGPT) ProcessPrompt(ctx context.Context, prompt commands.Content) {
+	resp, err := c.processPrompt(prompt.Text)
+	if err != nil {
+		c.logger.Error("failed to process prompt", zap.Error(err))
+		return
+	}
+
+	c.logger.Info("sending answer", zap.Int("threadId", prompt.ThreadId))
+	_ = c.contentPublisher.SendData(ctx, []commands.Content{
+		{
+			Text:     resp,
+			ThreadId: prompt.ThreadId,
+		},
+	})
+}
+
+func (c *ChatGPT) processPrompt(prompt string) (string, error) {
+	c.logger.Info("sending prompt", zap.String("prompt", prompt))
 	defer trackCompletionRequestDuration()()
 	req := gogpt.CompletionRequest{
 		Model:     gogpt.GPT3TextDavinci003,
@@ -82,10 +89,6 @@ func (c *ChatGPT) ask(prompt string) (string, error) {
 		return "", err
 	}
 	return resp.Choices[0].Text, nil
-}
-
-func (c *ChatGPT) Ask(prompt commands.Content) {
-	c.promptCh <- prompt
 }
 
 func trackCompletionRequestDuration() (stop func()) {
