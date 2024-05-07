@@ -2,14 +2,19 @@ package bot
 
 import (
 	"context"
+	"fmt"
 	"strings"
+	"time"
 
+	"github.com/avast/retry-go/v4"
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/camopy/rss_everything/bot/commands"
-	feeds "github.com/camopy/rss_everything/bot/feeds"
+	"github.com/camopy/rss_everything/bot/feeds"
 	"github.com/camopy/rss_everything/db"
 	"github.com/camopy/rss_everything/util/psub"
 	"github.com/camopy/rss_everything/util/run"
@@ -19,6 +24,7 @@ import (
 const (
 	hackerNewsThreadId = 6
 	cryptoThreadId     = 9
+	maxRetries         = 4
 )
 
 type TelegramConfig struct {
@@ -93,7 +99,7 @@ func (b *Telegram) Name() string {
 }
 
 func (b *Telegram) Start(ctx run.Context) error {
-	ctx.Go("handle-feed-updates", b.handleFeedUpdates)
+	ctx.Go("handle-content-updates", b.handleContentUpdates)
 	ctx.Go("handle-messages", b.handleMessages)
 
 	b.initFeeds(ctx, b.cfg)
@@ -102,21 +108,38 @@ func (b *Telegram) Start(ctx run.Context) error {
 	return nil
 }
 
-func (b *Telegram) handleFeedUpdates(ctx context.Context) error {
+func (b *Telegram) handleContentUpdates(ctx context.Context) error {
 	return psub.ProcessWithContext(ctx, b.contentSubscriber.Subscribe(ctx), func(ctx context.Context, contents []commands.Content) error {
 		for _, c := range contents {
-			if _, err := b.client.SendMessage(ctx, &bot.SendMessageParams{
-				ChatID:          b.cfg.ChatId,
-				Text:            c.Text,
-				MessageThreadID: c.ThreadId,
-			},
-			); err != nil {
-				b.logger.Error(
-					"failed to send message",
-					zap.Error(err),
-					zap.Int("threadId", c.ThreadId),
-					zap.String("msg", c.Text),
-				)
+			attempt := 0
+			err := retry.Do(
+				func() error {
+					span := trace.SpanFromContext(ctx)
+					span.SetAttributes(attribute.Int("attempt", attempt))
+					_, err := b.client.SendMessage(ctx, &bot.SendMessageParams{
+						ChatID:          b.cfg.ChatId,
+						Text:            c.Text,
+						MessageThreadID: c.ThreadId,
+					})
+					return err
+				},
+				retry.RetryIf(bot.IsTooManyRequestsError),
+				retry.LastErrorOnly(true),
+				retry.Context(ctx),
+				retry.Attempts(maxRetries),
+				retry.DelayType(func(n uint, err error, config *retry.Config) time.Duration {
+					if bot.IsTooManyRequestsError(err) {
+						return time.Duration(err.(*bot.TooManyRequestsError).RetryAfter) * time.Second
+					}
+					return retry.BackOffDelay(n, err, config)
+				}),
+				retry.OnRetry(func(n uint, err error) {
+					attempt++
+					b.logger.Warn(fmt.Sprintf("failed to send content update to telegram, retrying..."), zap.Error(err), zap.Uint("attempt", n))
+				}),
+			)
+			if err != nil {
+				b.logger.Error(fmt.Sprintf("failed to send content update to telegram: %v", err))
 			}
 		}
 		return nil
