@@ -13,6 +13,7 @@ import (
 
 	"github.com/camopy/rss_everything/bot/commands"
 	"github.com/camopy/rss_everything/db"
+	ge "github.com/camopy/rss_everything/util/generics"
 	"github.com/camopy/rss_everything/util/psub"
 	"github.com/camopy/rss_everything/util/run"
 	"github.com/camopy/rss_everything/zaplog"
@@ -122,7 +123,10 @@ func (u *RSS) add(ctx context.Context, c *rssCommand) error {
 	if err := u.saveSubscription(ctx, sub); err != nil {
 		return err
 	}
-	go u.poll(ctx, *sub)
+	run.Periodically(u.logger, 0, sub.Interval, func(ctx context.Context) error {
+		u.poll(ctx, *sub)
+		return nil
+	})
 	return nil
 }
 
@@ -160,23 +164,24 @@ func (u *RSS) list(ctx context.Context, c *rssCommand) error {
 	var messages []string
 	var msg string
 	for _, sub := range subs {
-		if len(msg) > 1000 {
+		newEntry := fmt.Sprintf("%s - %s: %s\n", sub.FeedTitle, sub.Url, sub.Interval)
+
+		if len(msg)+len(newEntry) > 1000 {
 			messages = append(messages, msg)
 			msg = ""
 		}
-		msg += fmt.Sprintf("%s - %s: %s\n", sub.FeedTitle, sub.Url, sub.Interval)
+		msg += newEntry
+	}
+	if len(msg) > 0 {
+		messages = append(messages, msg)
 	}
 
-	u.logger.Info("retrieved subscriptions", zap.String("subscriptions", msg))
-	for _, m := range messages {
-		_ = u.contentPublisher.SendData(ctx, []commands.Content{
-			{
-				ThreadId: c.threadId,
-				Text:     m,
-			},
-		})
-	}
-	return nil
+	return u.contentPublisher.SendData(ctx, ge.Map(messages, func(message string) commands.Content {
+		return commands.Content{
+			Text:     message,
+			ThreadId: c.threadId,
+		}
+	}))
 }
 
 func (u *RSS) getSubscriptions(ctx context.Context) ([]rssSubscription, error) {
@@ -230,37 +235,25 @@ func (u *RSS) Start(ctx run.Context) error {
 	}
 	u.subscriptions = subs
 	for _, sub := range subs {
-		go u.poll(ctx, sub)
+		run.Periodically(u.logger, 0, sub.Interval, func(ctx context.Context) error {
+			u.poll(ctx, sub)
+			return nil
+		})
 	}
 	return nil
 }
 
 func (u *RSS) poll(ctx context.Context, sub rssSubscription) {
 	u.logger.Info("polling", zap.String("url", sub.Url))
-	fetch := func(ctx context.Context, sub rssSubscription) {
-		posts, err := u.fetch(ctx, sub)
-		if err != nil {
-			fmt.Println(err)
-			u.logger.Error("fetch error", zap.Error(err))
-		} else if len(posts) > 0 {
-			u.logger.Info("sending posts", zap.Int("count", len(posts)), zap.Int("threadId", sub.ThreadId))
-			_ = u.contentPublisher.SendData(ctx, posts)
-		}
-		u.logger.Info("polling done", zap.String("url", sub.Url), zap.Int("threadId", sub.ThreadId), zap.Int("new posts", len(posts)))
+	posts, err := u.fetch(ctx, sub)
+	if err != nil {
+		fmt.Println(err)
+		u.logger.Error("fetch error", zap.Error(err))
+	} else if len(posts) > 0 {
+		u.logger.Info("sending posts", zap.Int("count", len(posts)), zap.Int("threadId", sub.ThreadId))
+		_ = u.contentPublisher.SendData(ctx, posts)
 	}
-	fetch(ctx, sub)
-
-	ticker := time.NewTicker(sub.Interval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			fetch(ctx, sub)
-		case <-ctx.Done():
-			return
-		}
-	}
+	u.logger.Info("polling done", zap.String("url", sub.Url), zap.Int("threadId", sub.ThreadId), zap.Int("new posts", len(posts)))
 }
 
 type rssPost struct {
