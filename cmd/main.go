@@ -3,21 +3,14 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
-	"go.uber.org/zap"
-	"net/http"
 	"os"
 	"strconv"
-
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/camopy/rss_everything/bot"
 	"github.com/camopy/rss_everything/db"
 	. "github.com/camopy/rss_everything/util/run"
 	"github.com/camopy/rss_everything/zaplog"
 )
-
-const metricsServerAddr = "0.0.0.0:9091"
 
 type Config struct {
 	RedisURI  string
@@ -32,8 +25,6 @@ func main() {
 	logger := zaplog.Configure()
 	defer zaplog.Recover()
 
-	go startMetricsServer(logger)
-
 	telegramBot := bot.NewTelegramBot(
 		logger.Named("telegram-bot"),
 		db.NewRedis(cfg.RedisURI),
@@ -41,6 +32,12 @@ func main() {
 	)
 
 	ctx := NewContext(context.Background(), logger.Named("run"), "main")
+
+	ctx.Go("monitoring-server", func(ctx context.Context) error {
+		startMonitoringServer(logger)
+		return nil
+	})
+
 	ctx.Start(telegramBot)
 }
 
@@ -113,13 +110,4 @@ func lookupEnv(key string) (string, error) {
 		return "", errors.New("missing env var " + key)
 	}
 	return v, nil
-}
-
-func startMetricsServer(logger *zaplog.Logger) {
-	var mux http.ServeMux
-	mux.Handle("/metrics", promhttp.Handler())
-	logger.Info("starting metrics server", zap.String("endpoint", fmt.Sprintf("http://%s/metrics", metricsServerAddr)))
-	if err := http.ListenAndServe(metricsServerAddr, &mux); err != nil {
-		logger.Fatal("failed to start metrics server", zap.Error(err))
-	}
 }

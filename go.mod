@@ -3,6 +3,7 @@ module github.com/camopy/rss_everything
 go 1.19
 
 require (
+	github.com/avast/retry-go/v4 v4.6.0
 	github.com/go-redis/redis/v9 v9.0.0-rc.2
 	github.com/go-telegram/bot v1.2.2
 	github.com/json-iterator/go v1.1.12
@@ -12,6 +13,8 @@ require (
 	github.com/stretchr/testify v1.9.0
 	github.com/turnage/graw v0.0.0-20201204201853-a177df1b5c91
 	github.com/uptrace/opentelemetry-go-extra/otelzap v0.2.3
+	go.opentelemetry.io/otel v1.18.0
+	go.opentelemetry.io/otel/trace v1.18.0
 	go.uber.org/zap v1.26.0
 	golang.org/x/exp v0.0.0-20240416160154-fe59bbe5cc7f
 )
@@ -19,7 +22,6 @@ require (
 require (
 	github.com/PuerkitoBio/goquery v1.8.0 // indirect
 	github.com/andybalholm/cascadia v1.3.1 // indirect
-	github.com/avast/retry-go/v4 v4.6.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
@@ -36,8 +38,6 @@ require (
 	github.com/prometheus/procfs v0.8.0 // indirect
 	github.com/turnage/redditproto v0.0.0-20151223012412-afedf1b6eddb // indirect
 	github.com/uptrace/opentelemetry-go-extra/otelutil v0.2.3 // indirect
-	go.opentelemetry.io/otel v1.18.0 // indirect
-	go.opentelemetry.io/otel/trace v1.18.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/net v0.5.0 // indirect
 	golang.org/x/oauth2 v0.0.0-20220223155221-ee480838109b // indirect
