@@ -25,20 +25,29 @@ const (
 )
 
 type RSS struct {
-	client           *gofeed.Parser
-	logger           *zaplog.Logger
-	db               db.DB
-	subscriptions    []rssSubscription
-	contentPublisher psub.Publisher[[]commands.Content]
+	client                 *gofeed.Parser
+	logger                 *zaplog.Logger
+	db                     db.DB
+	subscriptions          []rssSubscription
+	contentPublisher       psub.Publisher[[]commands.Content]
+	subscriptionPublisher  psub.Publisher[rssSubscription]
+	subscriptionSubscriber psub.Subscriber[rssSubscription]
 }
 
 func NewRSS(logger *zaplog.Logger, contentPublisher psub.Publisher[[]commands.Content], db db.DB) *RSS {
+	subscriptionSubscriber, subscriptionPublisher := psub.NewSubscriber[rssSubscription](
+		psub.WithSubscriberName("rss-subscriptions"),
+		psub.WithSubscriberSubscriptionOptions(psub.WithSubscriptionBlocking(true)),
+	)
+
 	return &RSS{
 		client: gofeed.NewParser(),
 		logger: logger,
 		db:     db,
 
-		contentPublisher: contentPublisher,
+		contentPublisher:       contentPublisher,
+		subscriptionPublisher:  subscriptionPublisher,
+		subscriptionSubscriber: subscriptionSubscriber,
 	}
 }
 
@@ -123,11 +132,8 @@ func (u *RSS) add(ctx context.Context, c *rssCommand) error {
 	if err := u.saveSubscription(ctx, sub); err != nil {
 		return err
 	}
-	run.Periodically(u.logger, 0, sub.Interval, func(ctx context.Context) error {
-		u.poll(ctx, *sub)
-		return nil
-	})
-	return nil
+
+	return u.subscriptionPublisher.SendData(ctx, *sub)
 }
 
 func (u *RSS) saveSubscription(ctx context.Context, sub *rssSubscription) error {
@@ -235,12 +241,24 @@ func (u *RSS) Start(ctx run.Context) error {
 	}
 	u.subscriptions = subs
 	for _, sub := range subs {
-		run.Periodically(u.logger, 0, sub.Interval, func(ctx context.Context) error {
+		ctx.Go("fetch-rss", run.Periodically(u.logger, 0, sub.Interval, func(ctx context.Context) error {
 			u.poll(ctx, sub)
 			return nil
-		})
+		}))
 	}
+
+	ctx.Go("listening-to-new-rss-subscriptions", func(newCtx context.Context) error {
+		return u.listenToSubscriptions(ctx)
+	})
+
 	return nil
+}
+
+func (u *RSS) listenToSubscriptions(ctx run.Context) error {
+	return psub.ProcessWithContext(ctx, u.subscriptionSubscriber.Subscribe(ctx), func(ctx context.Context, data rssSubscription) error {
+		u.poll(ctx, data)
+		return nil
+	})
 }
 
 func (u *RSS) poll(ctx context.Context, sub rssSubscription) {
