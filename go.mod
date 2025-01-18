@@ -13,8 +13,6 @@ require (
 	github.com/stretchr/testify v1.9.0
 	github.com/turnage/graw v0.0.0-20201204201853-a177df1b5c91
 	github.com/uptrace/opentelemetry-go-extra/otelzap v0.2.3
-	go.opentelemetry.io/otel v1.18.0
-	go.opentelemetry.io/otel/trace v1.18.0
 	go.uber.org/zap v1.26.0
 	golang.org/x/exp v0.0.0-20240416160154-fe59bbe5cc7f
 )
@@ -38,6 +36,8 @@ require (
 	github.com/prometheus/procfs v0.8.0 // indirect
 	github.com/turnage/redditproto v0.0.0-20151223012412-afedf1b6eddb // indirect
 	github.com/uptrace/opentelemetry-go-extra/otelutil v0.2.3 // indirect
+	go.opentelemetry.io/otel v1.18.0 // indirect
+	go.opentelemetry.io/otel/trace v1.18.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/net v0.5.0 // indirect
 	golang.org/x/oauth2 v0.0.0-20220223155221-ee480838109b // indirect

@@ -9,8 +9,6 @@ import (
 	"github.com/avast/retry-go/v4"
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/camopy/rss_everything/bot/commands"
@@ -114,8 +112,6 @@ func (b *Telegram) handleContentUpdates(ctx context.Context) error {
 			attempt := 0
 			err := retry.Do(
 				func() error {
-					span := trace.SpanFromContext(ctx)
-					span.SetAttributes(attribute.Int("attempt", attempt))
 					_, err := b.client.SendMessage(ctx, &bot.SendMessageParams{
 						ChatID:          b.cfg.ChatId,
 						Text:            c.Text,

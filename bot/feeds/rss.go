@@ -3,6 +3,7 @@ package feeds
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -218,6 +219,7 @@ func (u *RSS) remove(ctx context.Context, cmd *rssCommand) error {
 				return err
 			}
 			u.logger.Info("subscription removed", zap.String("feedTitle", cmd.feedTitle))
+			u.removeSubscription(sub)
 			return u.contentPublisher.SendData(ctx, []commands.Content{
 				{
 					ThreadId: cmd.threadId,
@@ -227,6 +229,15 @@ func (u *RSS) remove(ctx context.Context, cmd *rssCommand) error {
 		}
 	}
 	return nil
+}
+
+func (u *RSS) removeSubscription(sub rssSubscription) {
+	for i, s := range u.subscriptions {
+		if s.FeedTitle == sub.FeedTitle {
+			u.subscriptions = append(u.subscriptions[:i], u.subscriptions[i+1:]...)
+			break
+		}
+	}
 }
 
 func (u *RSS) Name() string {
@@ -241,10 +252,7 @@ func (u *RSS) Start(ctx run.Context) error {
 	}
 	u.subscriptions = subs
 	for _, sub := range subs {
-		ctx.Go("fetch-rss", run.Periodically(u.logger, 0, sub.Interval, func(ctx context.Context) error {
-			u.poll(ctx, sub)
-			return nil
-		}))
+		u.periodicallyPoll(ctx, sub)
 	}
 
 	ctx.Go("listening-to-new-rss-subscriptions", func(newCtx context.Context) error {
@@ -254,11 +262,34 @@ func (u *RSS) Start(ctx run.Context) error {
 	return nil
 }
 
-func (u *RSS) listenToSubscriptions(ctx run.Context) error {
-	return psub.ProcessWithContext(ctx, u.subscriptionSubscriber.Subscribe(ctx), func(ctx context.Context, data rssSubscription) error {
-		u.poll(ctx, data)
+func findSubscription(subs []rssSubscription, feedTitle string) *rssSubscription {
+	for _, sub := range subs {
+		if sub.FeedTitle == feedTitle {
+			return &sub
+		}
+	}
+	return nil
+}
+
+func (u *RSS) listenToSubscriptions(runCtx run.Context) error {
+	return psub.ProcessWithContext(runCtx, u.subscriptionSubscriber.Subscribe(runCtx), func(ctx context.Context, data rssSubscription) error {
+		u.periodicallyPoll(runCtx, data)
 		return nil
 	})
+}
+
+func (u *RSS) periodicallyPoll(runCtx run.Context, sub rssSubscription) {
+	name := fmt.Sprintf("fetch-rss:%s", sub.FeedTitle)
+	runCtx = runCtx.New(name)
+	runCtx.Go(name, run.Periodically(u.logger, 0, sub.Interval, func(ctx context.Context) error {
+		sub := findSubscription(u.subscriptions, sub.FeedTitle)
+		if sub == nil {
+			runCtx.Cancel(errors.New("subscription not found"))
+			return nil
+		}
+		u.poll(ctx, *sub)
+		return nil
+	}))
 }
 
 func (u *RSS) poll(ctx context.Context, sub rssSubscription) {
