@@ -198,16 +198,21 @@ func (b *Discord) handleCommand(ctx context.Context, update *discordgo.MessageCr
 		if err != nil {
 			b.logger.Error("rss command failed", zap.Error(err))
 		}
+	case "/hn":
+		err := b.hackerNews.HandleCommand(ctx, cmd)
+		if err != nil {
+			b.logger.Error("hacker news command failed", zap.Error(err))
+		}
 	}
 }
 
 func (b *Discord) initFeeds(ctx run.Context, cfg DiscordConfig) {
-	//b.hackerNews = feeds.NewHackerNews(b.logger.Named("hacker-news"), b.contentPublisher, b.db, hackerNewsThreadId)
+	b.hackerNews = feeds.NewHackerNews(b.logger.Named("hacker-news"), b.contentPublisher, b.db)
 	//b.cryptoFeed = feeds.NewCryptoFeed(b.logger.Named("crypto"), b.contentPublisher, cryptoThreadId)
 	b.reddit = feeds.NewReddit(b.logger.Named("reddit"), b.contentPublisher, b.db, cfg.RedditClientId, cfg.RedditApiKey, cfg.RedditUsername, cfg.RedditPassword)
 	b.rss = feeds.NewRSS(b.logger.Named("rss"), b.contentPublisher, b.db)
 
-	//ctx.Start(b.hackerNews)
+	ctx.Start(b.hackerNews)
 	//ctx.Start(b.cryptoFeed)
 	ctx.Start(b.reddit)
 	ctx.Start(b.rss)

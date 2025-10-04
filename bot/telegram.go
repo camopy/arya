@@ -20,9 +20,8 @@ import (
 )
 
 const (
-	hackerNewsThreadId = 6
-	cryptoThreadId     = 9
-	maxRetries         = 4
+	cryptoThreadId = 9
+	maxRetries     = 4
 )
 
 type TelegramConfig struct {
@@ -203,7 +202,7 @@ func (b *Telegram) handleCommand(ctx context.Context, update *models.Update) {
 
 func (b *Telegram) initFeeds(ctx run.Context, cfg TelegramConfig) {
 	b.chatGPT = feeds.NewChatGPT(b.logger.Named("chat-gpt"), b.contentPublisher, cfg.ChatGPTApiKey, cfg.ChatGPTUserName)
-	b.hackerNews = feeds.NewHackerNews(b.logger.Named("hacker-news"), b.contentPublisher, b.db, hackerNewsThreadId)
+	b.hackerNews = feeds.NewHackerNews(b.logger.Named("hacker-news"), b.contentPublisher, b.db)
 	b.cryptoFeed = feeds.NewCryptoFeed(b.logger.Named("crypto"), b.contentPublisher, cryptoThreadId)
 	b.reddit = feeds.NewReddit(b.logger.Named("reddit"), b.contentPublisher, b.db, cfg.RedditClientId, cfg.RedditApiKey, cfg.RedditUsername, cfg.RedditPassword)
 	b.rss = feeds.NewRSS(b.logger.Named("rss"), b.contentPublisher, b.db)
