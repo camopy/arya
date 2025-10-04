@@ -1,9 +1,10 @@
 module github.com/camopy/rss_everything
 
-go 1.19
+go 1.23.6
 
 require (
 	github.com/avast/retry-go/v4 v4.6.0
+	github.com/bwmarrin/discordgo v0.29.0
 	github.com/go-redis/redis/v9 v9.0.0-rc.2
 	github.com/go-telegram/bot v1.2.2
 	github.com/json-iterator/go v1.1.12
@@ -21,7 +22,6 @@ require (
 	github.com/PuerkitoBio/goquery v1.8.0 // indirect
 	github.com/andybalholm/cascadia v1.3.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/bwmarrin/discordgo v0.29.0 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
