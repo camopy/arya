@@ -78,6 +78,7 @@ type rssCommand struct {
 }
 
 func (u *RSS) parseCommand(cmd commands.Command) (*rssCommand, error) {
+	// /rss operation[add|remove|list] feed_title interval[m] url
 	s := strings.Split(cmd.Text, " ")
 
 	c := &rssCommand{
