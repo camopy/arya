@@ -1,1 +1,4 @@
 /fly.toml
+/.idea
+.env
+.DS_Store
