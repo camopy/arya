@@ -16,19 +16,19 @@ import (
 	"github.com/camopy/rss_everything/zaplog"
 )
 
-type Olx struct {
+type ZapImoveis struct {
 	logger *zaplog.Logger
 	db     db.DB
 }
 
-func NewOlx(logger *zaplog.Logger, db db.DB) *Olx {
-	return &Olx{
+func NewZapImoveis(logger *zaplog.Logger, db db.DB) *ZapImoveis {
+	return &ZapImoveis{
 		logger: logger,
 		db:     db,
 	}
 }
 
-type olx struct {
+type zapImovel struct {
 	Image    string `json:"image"`
 	Title    string `json:"title"`
 	Price    string `json:"price"`
@@ -36,15 +36,16 @@ type olx struct {
 	Location string `json:"location"`
 }
 
-func (z olx) String() string {
+func (z zapImovel) String() string {
 	return fmt.Sprintf(`%s 
 %s 
 ️%s
+️%s
 
-%s`, z.Title, z.Location, z.Price, z.Link)
+%s`, z.Title, z.Location, z.Price, z.Image, z.Link)
 }
 
-func (z *Olx) scrap(ctx context.Context, threadId int, url string) ([]commands.Content, error) {
+func (z *ZapImoveis) scrap(ctx context.Context, threadId int, url string) ([]commands.Content, error) {
 	fakeChrome := req.DefaultClient().ImpersonateChrome()
 
 	c := colly.NewCollector(func(collector *colly.Collector) {
@@ -63,30 +64,43 @@ func (z *Olx) scrap(ctx context.Context, threadId int, url string) ([]commands.C
 		z.logger.Error("Something went wrong", zap.Error(err), zap.String("url", r.Request.URL.String()), zap.Any("response", r))
 	})
 
-	items := make([]olx, 0, 10)
+	items := make([]zapImovel, 0, 10)
 	var err error
 
-	c.OnHTML("section", func(e *colly.HTMLElement) {
-		if err == nil {
-			item := olx{
-				Image:    e.ChildAttr("div.AdCard_media__0T37N div picture source", "srcset"),
-				Title:    e.ChildAttr("div div a", "title"),
-				Price:    e.ChildText("div.olx-adcard__mediumbody h3"),
-				Location: e.ChildText("div.olx-adcard__bottombody div p.typo-caption.olx-adcard__location"),
-				Link:     e.ChildAttr("div div a", "href"),
-			}
+	c.OnHTML("div.listings-wrapper li a", func(e *colly.HTMLElement) {
+		if err != nil {
+			return
+		}
 
-			isNewPost, duplicateErr := z.isNewItem(ctx, item)
-			if duplicateErr != nil {
-				err = duplicateErr
+		locationSelection := e.DOM.Find("h2[data-cy='rp-cardProperty-location-txt']").Clone()
+		locationSelection.Find("span").Remove()
+
+		item := zapImovel{
+			Title:    e.Attr("title"),
+			Price:    e.ChildText("div div div div p.text-2-25.text-neutral-120.font-semibold"),
+			Image:    e.ChildAttr("div div div div div div img", "src"),
+			Link:     e.Attr("href"),
+			Location: locationSelection.Text(),
+		}
+
+		if item.Price == "" {
+			item.Price = e.ChildText("div div div div p.text-2-25.text-feedback-success-110.font-semibold")
+		}
+
+		if item.Link == "" || item.Title == "" {
+			return
+		}
+
+		isNewPost, duplicateErr := z.isNewItem(ctx, item)
+		if duplicateErr != nil {
+			err = duplicateErr
+		}
+		if isNewPost {
+			if saveErr := z.savePost(ctx, item); saveErr != nil {
+				err = saveErr
 			}
-			if isNewPost {
-				if saveErr := z.savePost(ctx, item); saveErr != nil {
-					err = saveErr
-				}
-				z.logger.Info("saved new item", zap.String("item", item.String()))
-				items = append(items, item)
-			}
+			z.logger.Info("saved new item", zap.String("item", item.String()))
+			items = append(items, item)
 		}
 	})
 
@@ -100,10 +114,10 @@ func (z *Olx) scrap(ctx context.Context, threadId int, url string) ([]commands.C
 		z.logger.Warn("Error visiting", zap.Error(err), zap.String("url", url))
 	}
 
-	return parseOlx(threadId, items), nil
+	return parseZapImoveis(threadId, items), nil
 }
 
-func parseOlx(threadId int, items []olx) []commands.Content {
+func parseZapImoveis(threadId int, items []zapImovel) []commands.Content {
 	content := make([]commands.Content, 0, len(items))
 	for _, item := range items {
 		content = append(content, commands.Content{
@@ -114,15 +128,15 @@ func parseOlx(threadId int, items []olx) []commands.Content {
 	return content
 }
 
-func (z *Olx) isNewItem(ctx context.Context, post olx) (bool, error) {
-	isDuplicate, err := z.isDuplicatePost(ctx, post.Link)
+func (z *ZapImoveis) isNewItem(ctx context.Context, item zapImovel) (bool, error) {
+	isDuplicate, err := z.isDuplicatePost(ctx, item.Link)
 	if err != nil || isDuplicate {
 		return false, err
 	}
 	return true, nil
 }
 
-func (z *Olx) isDuplicatePost(ctx context.Context, id string) (bool, error) {
+func (z *ZapImoveis) isDuplicatePost(ctx context.Context, id string) (bool, error) {
 	s, err := z.db.Get(ctx, fmt.Sprintf("%s:%s", "scrapper:items", id))
 	if err != nil && !z.db.IsErrNotFound(err) {
 		return false, err
@@ -130,7 +144,7 @@ func (z *Olx) isDuplicatePost(ctx context.Context, id string) (bool, error) {
 	return s != nil, nil
 }
 
-func (z *Olx) savePost(ctx context.Context, post olx) error {
+func (z *ZapImoveis) savePost(ctx context.Context, post zapImovel) error {
 	value, err := json.Marshal(post)
 	if err != nil {
 		return err

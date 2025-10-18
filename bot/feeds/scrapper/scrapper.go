@@ -313,6 +313,8 @@ func (u *Scrapper) scrap(ctx context.Context, sub *subscription) {
 			olxScrapper := NewOlx(u.logger.Named("olx"), u.db)
 			items, err = olxScrapper.scrap(ctx, sub.ThreadId, sub.Url)
 		case ZapImoveisPlatform:
+			zapImoveisScrapper := NewZapImoveis(u.logger.Named("zap-imoveis"), u.db)
+			items, err = zapImoveisScrapper.scrap(ctx, sub.ThreadId, sub.Url)
 		}
 
 		if err != nil {
