@@ -41,7 +41,6 @@ type Discord struct {
 	db     db.DB
 
 	hackerNews *feeder.Feed
-	cryptoFeed *feeder.CryptoFeed
 	reddit     *feeder.Feed
 	rss        *feeder.Feed
 	scrapper   *scrapper.Scrapper
@@ -249,11 +248,9 @@ func (b *Discord) initFeeds(ctx run.Context, cfg DiscordConfig) {
 		),
 	)
 
-	//b.cryptoFeed = feeds.NewCryptoFeed(b.logger.Named("crypto"), b.contentPublisher, cryptoThreadId)
 	b.scrapper = scrapper.New(b.logger.Named("scrapper"), b.contentPublisher, b.db)
 
 	ctx.Start(b.hackerNews)
-	//ctx.Start(b.cryptoFeed)
 	ctx.Start(b.reddit)
 	ctx.Start(b.rss)
 	ctx.Start(b.scrapper)

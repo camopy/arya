@@ -10,6 +10,7 @@ require (
 	github.com/go-redis/redis/v9 v9.0.0-rc.2
 	github.com/go-telegram/bot v1.2.2
 	github.com/gocolly/colly/v2 v2.2.0
+	github.com/google/uuid v1.6.0
 	github.com/imroc/req/v3 v3.55.0
 	github.com/json-iterator/go v1.1.12
 	github.com/mmcdole/gofeed v1.2.1
@@ -38,7 +39,6 @@ require (
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.4.2 // indirect
 	github.com/icholy/digest v1.1.0 // indirect
 	github.com/kennygrant/sanitize v1.2.4 // indirect
