@@ -1,4 +1,4 @@
-package feeds
+package feeder
 
 import (
 	"context"

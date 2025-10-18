@@ -12,11 +12,11 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/camopy/rss_everything/bot/commands"
-	"github.com/camopy/rss_everything/bot/feeds"
-	"github.com/camopy/rss_everything/bot/feeds/hacker_news"
-	"github.com/camopy/rss_everything/bot/feeds/reddit"
-	"github.com/camopy/rss_everything/bot/feeds/rss"
-	"github.com/camopy/rss_everything/bot/feeds/scrapper"
+	"github.com/camopy/rss_everything/bot/feeder"
+	"github.com/camopy/rss_everything/bot/feeder/hacker_news"
+	"github.com/camopy/rss_everything/bot/feeder/reddit"
+	"github.com/camopy/rss_everything/bot/feeder/rss"
+	"github.com/camopy/rss_everything/bot/feeder/scrapper"
 	"github.com/camopy/rss_everything/db"
 	"github.com/camopy/rss_everything/util/psub"
 	"github.com/camopy/rss_everything/util/run"
@@ -43,10 +43,10 @@ type Telegram struct {
 	logger *zaplog.Logger
 	db     db.DB
 
-	hackerNews *feeds.Feed
-	cryptoFeed *feeds.CryptoFeed
-	reddit     *feeds.Feed
-	rss        *feeds.Feed
+	hackerNews *feeder.Feed
+	cryptoFeed *feeder.CryptoFeed
+	reddit     *feeder.Feed
+	rss        *feeder.Feed
 	scrapper   *scrapper.Scrapper
 
 	telegramSubscriber psub.Subscriber[*models.Update]
@@ -211,7 +211,7 @@ func (b *Telegram) handleCommand(ctx context.Context, update *models.Update) {
 func (b *Telegram) initFeeds(ctx run.Context, cfg TelegramConfig) {
 	logger := b.logger.Named("feeds")
 
-	b.hackerNews = feeds.New(
+	b.hackerNews = feeder.New(
 		logger,
 		b.contentPublisher,
 		b.db,
@@ -221,7 +221,7 @@ func (b *Telegram) initFeeds(ctx run.Context, cfg TelegramConfig) {
 		),
 	)
 
-	b.reddit = feeds.New(
+	b.reddit = feeder.New(
 		logger,
 		b.contentPublisher,
 		b.db,
@@ -235,7 +235,7 @@ func (b *Telegram) initFeeds(ctx run.Context, cfg TelegramConfig) {
 		),
 	)
 
-	b.rss = feeds.New(
+	b.rss = feeder.New(
 		logger,
 		b.contentPublisher,
 		b.db,
@@ -245,7 +245,7 @@ func (b *Telegram) initFeeds(ctx run.Context, cfg TelegramConfig) {
 		),
 	)
 
-	b.cryptoFeed = feeds.NewCryptoFeed(b.logger.Named("crypto"), b.contentPublisher, cryptoThreadId)
+	b.cryptoFeed = feeder.NewCryptoFeed(b.logger.Named("crypto"), b.contentPublisher, cryptoThreadId)
 	b.scrapper = scrapper.New(b.logger.Named("scrapper"), b.contentPublisher, b.db)
 
 	ctx.Start(b.hackerNews)

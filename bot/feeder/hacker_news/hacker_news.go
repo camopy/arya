@@ -13,7 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/camopy/rss_everything/bot/commands"
-	"github.com/camopy/rss_everything/bot/feeds"
+	"github.com/camopy/rss_everything/bot/feeder"
 	"github.com/camopy/rss_everything/db"
 	"github.com/camopy/rss_everything/metrics"
 	"github.com/camopy/rss_everything/zaplog"
@@ -51,7 +51,7 @@ func trackLoadedStories(storiesLoaded int) {
 	hackerNewsMetrics.loadStoriesTotal.WithLabelValues().Inc()
 }
 
-func New(logger *zaplog.Logger, db db.DB) feeds.Feeder {
+func New(logger *zaplog.Logger, db db.DB) feeder.Feeder {
 	return &HackerNews{
 		Client: http.DefaultClient,
 		logger: logger,
@@ -100,7 +100,7 @@ func (c hackerNewsCommand) Url() string {
 	return ""
 }
 
-func (h *HackerNews) ParseCommand(cmd commands.Command) (feeds.Command, error) {
+func (h *HackerNews) ParseCommand(cmd commands.Command) (feeder.Command, error) {
 	s := strings.Split(cmd.Text, " ")
 
 	c := &hackerNewsCommand{
@@ -115,7 +115,7 @@ func (h *HackerNews) ParseCommand(cmd commands.Command) (feeds.Command, error) {
 	return c, nil
 }
 
-func (h *HackerNews) Fetch(ctx context.Context, sub *feeds.Subscription) ([]commands.Content, error) {
+func (h *HackerNews) Fetch(ctx context.Context, sub *feeder.Subscription) ([]commands.Content, error) {
 	h.logger.Info("fetching hacker news")
 	ids, err := h.fetchTopStoriesIds()
 	if err != nil {

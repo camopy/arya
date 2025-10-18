@@ -12,7 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/camopy/rss_everything/bot/commands"
-	"github.com/camopy/rss_everything/bot/feeds"
+	"github.com/camopy/rss_everything/bot/feeder"
 	"github.com/camopy/rss_everything/db"
 	"github.com/camopy/rss_everything/zaplog"
 )
@@ -28,7 +28,7 @@ type RSS struct {
 	db     db.DB
 }
 
-func New(logger *zaplog.Logger, db db.DB) feeds.Feeder {
+func New(logger *zaplog.Logger, db db.DB) feeder.Feeder {
 	return &RSS{
 		client: gofeed.NewParser(),
 		logger: logger,
@@ -72,7 +72,7 @@ func (r rssCommand) Url() string {
 	return r.url
 }
 
-func (u *RSS) ParseCommand(cmd commands.Command) (feeds.Command, error) {
+func (u *RSS) ParseCommand(cmd commands.Command) (feeder.Command, error) {
 	// /rss operation[add|remove|list] feed_title interval[m] url
 	s := strings.Split(cmd.Text, " ")
 
@@ -104,7 +104,7 @@ func (u *RSS) ParseCommand(cmd commands.Command) (feeds.Command, error) {
 	return c, nil
 }
 
-func (u *RSS) Fetch(ctx context.Context, sub *feeds.Subscription) ([]commands.Content, error) {
+func (u *RSS) Fetch(ctx context.Context, sub *feeder.Subscription) ([]commands.Content, error) {
 	u.logger.Info("fetching", zap.String("url", sub.Name))
 	feed, err := u.client.ParseURLWithContext(sub.Url, ctx)
 	if err != nil {

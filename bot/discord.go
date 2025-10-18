@@ -15,11 +15,11 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/camopy/rss_everything/bot/commands"
-	"github.com/camopy/rss_everything/bot/feeds"
-	"github.com/camopy/rss_everything/bot/feeds/hacker_news"
-	"github.com/camopy/rss_everything/bot/feeds/reddit"
-	"github.com/camopy/rss_everything/bot/feeds/rss"
-	"github.com/camopy/rss_everything/bot/feeds/scrapper"
+	"github.com/camopy/rss_everything/bot/feeder"
+	"github.com/camopy/rss_everything/bot/feeder/hacker_news"
+	"github.com/camopy/rss_everything/bot/feeder/reddit"
+	"github.com/camopy/rss_everything/bot/feeder/rss"
+	"github.com/camopy/rss_everything/bot/feeder/scrapper"
 	"github.com/camopy/rss_everything/db"
 	"github.com/camopy/rss_everything/util/psub"
 	"github.com/camopy/rss_everything/util/run"
@@ -40,10 +40,10 @@ type Discord struct {
 	logger *zaplog.Logger
 	db     db.DB
 
-	hackerNews *feeds.Feed
-	cryptoFeed *feeds.CryptoFeed
-	reddit     *feeds.Feed
-	rss        *feeds.Feed
+	hackerNews *feeder.Feed
+	cryptoFeed *feeder.CryptoFeed
+	reddit     *feeder.Feed
+	rss        *feeder.Feed
 	scrapper   *scrapper.Scrapper
 
 	discordSubscriber psub.Subscriber[*discordgo.MessageCreate]
@@ -215,7 +215,7 @@ func (b *Discord) handleCommand(ctx context.Context, update *discordgo.MessageCr
 
 func (b *Discord) initFeeds(ctx run.Context, cfg DiscordConfig) {
 	logger := b.logger.Named("feeds")
-	b.hackerNews = feeds.New(
+	b.hackerNews = feeder.New(
 		logger,
 		b.contentPublisher,
 		b.db,
@@ -225,7 +225,7 @@ func (b *Discord) initFeeds(ctx run.Context, cfg DiscordConfig) {
 		),
 	)
 
-	b.reddit = feeds.New(
+	b.reddit = feeder.New(
 		logger,
 		b.contentPublisher,
 		b.db,
@@ -239,7 +239,7 @@ func (b *Discord) initFeeds(ctx run.Context, cfg DiscordConfig) {
 		),
 	)
 
-	b.rss = feeds.New(
+	b.rss = feeder.New(
 		logger,
 		b.contentPublisher,
 		b.db,
