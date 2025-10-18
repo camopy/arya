@@ -16,6 +16,7 @@ import (
 
 	"github.com/camopy/rss_everything/bot/commands"
 	"github.com/camopy/rss_everything/bot/feeds"
+	"github.com/camopy/rss_everything/bot/feeds/scrapper"
 	"github.com/camopy/rss_everything/db"
 	"github.com/camopy/rss_everything/util/psub"
 	"github.com/camopy/rss_everything/util/run"
@@ -43,6 +44,7 @@ type Discord struct {
 	cryptoFeed *feeds.CryptoFeed
 	reddit     *feeds.Reddit
 	rss        *feeds.RSS
+	scrapper   *scrapper.Scrapper
 
 	discordSubscriber psub.Subscriber[*discordgo.MessageCreate]
 	discordPublisher  psub.Publisher[*discordgo.MessageCreate]
@@ -188,6 +190,11 @@ func (b *Discord) handleCommand(ctx context.Context, update *discordgo.MessageCr
 	}
 
 	switch cmd.Name {
+	case "/scrapper":
+		err := b.scrapper.HandleCommand(ctx, cmd)
+		if err != nil {
+			b.logger.Error("scrapper command failed", zap.Error(err))
+		}
 	case "/reddit":
 		err := b.reddit.HandleCommand(ctx, cmd)
 		if err != nil {
@@ -207,13 +214,15 @@ func (b *Discord) handleCommand(ctx context.Context, update *discordgo.MessageCr
 }
 
 func (b *Discord) initFeeds(ctx run.Context, cfg DiscordConfig) {
-	b.hackerNews = feeds.NewHackerNews(b.logger.Named("hacker-news"), b.contentPublisher, b.db)
+	//b.hackerNews = feeds.NewHackerNews(b.logger.Named("hacker-news"), b.contentPublisher, b.db)
 	//b.cryptoFeed = feeds.NewCryptoFeed(b.logger.Named("crypto"), b.contentPublisher, cryptoThreadId)
-	b.reddit = feeds.NewReddit(b.logger.Named("reddit"), b.contentPublisher, b.db, cfg.RedditClientId, cfg.RedditApiKey, cfg.RedditUsername, cfg.RedditPassword)
-	b.rss = feeds.NewRSS(b.logger.Named("rss"), b.contentPublisher, b.db)
+	//b.reddit = feeds.NewReddit(b.logger.Named("reddit"), b.contentPublisher, b.db, cfg.RedditClientId, cfg.RedditApiKey, cfg.RedditUsername, cfg.RedditPassword)
+	//b.rss = feeds.NewRSS(b.logger.Named("rss"), b.contentPublisher, b.db)
+	b.scrapper = scrapper.New(b.logger.Named("scrapper"), b.contentPublisher, b.db)
 
-	ctx.Start(b.hackerNews)
+	//ctx.Start(b.hackerNews)
 	//ctx.Start(b.cryptoFeed)
-	ctx.Start(b.reddit)
-	ctx.Start(b.rss)
+	//ctx.Start(b.reddit)
+	//ctx.Start(b.rss)
+	ctx.Start(b.scrapper)
 }
