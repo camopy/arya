@@ -83,6 +83,10 @@ func (r redditCommand) SubName() string {
 	return r.subreddit
 }
 
+func (r redditCommand) Platform() string {
+	return "reddit"
+}
+
 func (r redditCommand) Url() string {
 	return ""
 }

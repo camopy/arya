@@ -43,7 +43,7 @@ type Discord struct {
 	hackerNews *feeder.Feed
 	reddit     *feeder.Feed
 	rss        *feeder.Feed
-	scrapper   *scrapper.Scrapper
+	scrapper   *feeder.Feed
 
 	discordSubscriber psub.Subscriber[*discordgo.MessageCreate]
 	discordPublisher  psub.Publisher[*discordgo.MessageCreate]
@@ -248,7 +248,15 @@ func (b *Discord) initFeeds(ctx run.Context, cfg DiscordConfig) {
 		),
 	)
 
-	b.scrapper = scrapper.New(b.logger.Named("scrapper"), b.contentPublisher, b.db)
+	b.scrapper = feeder.New(
+		logger,
+		b.contentPublisher,
+		b.db,
+		scrapper.New(
+			logger.Named("scrapper"),
+			b.db,
+		),
+	)
 
 	ctx.Start(b.hackerNews)
 	ctx.Start(b.reddit)

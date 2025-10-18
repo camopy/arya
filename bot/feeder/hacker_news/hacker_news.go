@@ -96,6 +96,10 @@ func (c hackerNewsCommand) Interval() time.Duration {
 	return c.interval
 }
 
+func (c hackerNewsCommand) Platform() string {
+	return "hacker-news"
+}
+
 func (c hackerNewsCommand) Url() string {
 	return ""
 }

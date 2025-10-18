@@ -45,7 +45,7 @@ type Telegram struct {
 	hackerNews *feeder.Feed
 	reddit     *feeder.Feed
 	rss        *feeder.Feed
-	scrapper   *scrapper.Scrapper
+	scrapper   *feeder.Feed
 
 	telegramSubscriber psub.Subscriber[*models.Update]
 	telegramPublisher  psub.Publisher[*models.Update]
@@ -243,7 +243,15 @@ func (b *Telegram) initFeeds(ctx run.Context, cfg TelegramConfig) {
 		),
 	)
 
-	b.scrapper = scrapper.New(b.logger.Named("scrapper"), b.contentPublisher, b.db)
+	b.scrapper = feeder.New(
+		logger,
+		b.contentPublisher,
+		b.db,
+		scrapper.New(
+			logger.Named("scrapper"),
+			b.db,
+		),
+	)
 
 	ctx.Start(b.hackerNews)
 	ctx.Start(b.reddit)

@@ -32,6 +32,7 @@ type Command interface {
 	Interval() time.Duration
 	ThreadId() int
 	SubName() string
+	Platform() string
 	Url() string
 }
 
@@ -49,6 +50,7 @@ type Subscription struct {
 	Name     string        `json:"name"`
 	Interval time.Duration `json:"interval"`
 	ThreadId int           `json:"thread_id"`
+	Platform string        `json:"platform"`
 	Url      string        `json:"url"`
 
 	cancelFunc context.CancelFunc
@@ -113,6 +115,7 @@ func (h *Feed) add(ctx context.Context, c Command) error {
 		Name:     c.SubName(),
 		Interval: ge.DefaultIfZero(c.Interval(), defaultFetchInterval),
 		ThreadId: c.ThreadId(),
+		Platform: c.Platform(),
 		Url:      c.Url(),
 	}
 	if err := h.saveSubscription(ctx, &sub); err != nil {

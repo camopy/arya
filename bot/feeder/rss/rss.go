@@ -68,6 +68,10 @@ func (r rssCommand) SubName() string {
 	return r.feedTitle
 }
 
+func (r rssCommand) Platform() string {
+	return "rss"
+}
+
 func (r rssCommand) Url() string {
 	return r.url
 }
