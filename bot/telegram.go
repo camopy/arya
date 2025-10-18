@@ -13,6 +13,7 @@ import (
 
 	"github.com/camopy/rss_everything/bot/commands"
 	"github.com/camopy/rss_everything/bot/feeds"
+	"github.com/camopy/rss_everything/bot/feeds/scrapper"
 	"github.com/camopy/rss_everything/db"
 	"github.com/camopy/rss_everything/util/psub"
 	"github.com/camopy/rss_everything/util/run"
@@ -46,6 +47,7 @@ type Telegram struct {
 	cryptoFeed *feeds.CryptoFeed
 	reddit     *feeds.Reddit
 	rss        *feeds.RSS
+	scrapper   *scrapper.Scrapper
 
 	telegramSubscriber psub.Subscriber[*models.Update]
 	telegramPublisher  psub.Publisher[*models.Update]
@@ -187,6 +189,11 @@ func (b *Telegram) handleCommand(ctx context.Context, update *models.Update) {
 	}
 
 	switch cmd.Name {
+	case "/scrapper":
+		err := b.scrapper.HandleCommand(ctx, cmd)
+		if err != nil {
+			b.logger.Error("scrapper command failed", zap.Error(err))
+		}
 	case "/reddit":
 		err := b.reddit.HandleCommand(ctx, cmd)
 		if err != nil {
@@ -197,6 +204,11 @@ func (b *Telegram) handleCommand(ctx context.Context, update *models.Update) {
 		if err != nil {
 			b.logger.Error("rss command failed", zap.Error(err))
 		}
+	case "/hn":
+		err := b.hackerNews.HandleCommand(ctx, cmd)
+		if err != nil {
+			b.logger.Error("hacker news command failed", zap.Error(err))
+		}
 	}
 }
 
@@ -206,10 +218,12 @@ func (b *Telegram) initFeeds(ctx run.Context, cfg TelegramConfig) {
 	b.cryptoFeed = feeds.NewCryptoFeed(b.logger.Named("crypto"), b.contentPublisher, cryptoThreadId)
 	b.reddit = feeds.NewReddit(b.logger.Named("reddit"), b.contentPublisher, b.db, cfg.RedditClientId, cfg.RedditApiKey, cfg.RedditUsername, cfg.RedditPassword)
 	b.rss = feeds.NewRSS(b.logger.Named("rss"), b.contentPublisher, b.db)
+	b.scrapper = scrapper.New(b.logger.Named("scrapper"), b.contentPublisher, b.db)
 
 	ctx.Start(b.hackerNews)
 	ctx.Start(b.chatGPT)
 	ctx.Start(b.cryptoFeed)
 	ctx.Start(b.reddit)
 	ctx.Start(b.rss)
+	ctx.Start(b.scrapper)
 }
