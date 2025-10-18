@@ -26,13 +26,11 @@ import (
 )
 
 type DiscordConfig struct {
-	DiscordApiKey   string
-	ChatGPTApiKey   string
-	ChatGPTUserName string
-	RedditClientId  string
-	RedditApiKey    string
-	RedditUsername  string
-	RedditPassword  string
+	DiscordApiKey  string
+	RedditClientId string
+	RedditApiKey   string
+	RedditUsername string
+	RedditPassword string
 }
 
 type Discord struct {
@@ -41,7 +39,6 @@ type Discord struct {
 	logger *zaplog.Logger
 	db     db.DB
 
-	chatGPT    *feeds.ChatGPT
 	hackerNews *feeds.Feed
 	cryptoFeed *feeds.CryptoFeed
 	reddit     *feeds.Feed

@@ -28,14 +28,12 @@ const (
 )
 
 type TelegramConfig struct {
-	ChatId          int
-	TelegramApiKey  string
-	ChatGPTApiKey   string
-	ChatGPTUserName string
-	RedditClientId  string
-	RedditApiKey    string
-	RedditUsername  string
-	RedditPassword  string
+	ChatId         int
+	TelegramApiKey string
+	RedditClientId string
+	RedditApiKey   string
+	RedditUsername string
+	RedditPassword string
 }
 
 type Telegram struct {
@@ -44,7 +42,6 @@ type Telegram struct {
 	logger *zaplog.Logger
 	db     db.DB
 
-	chatGPT    *feeds.ChatGPT
 	hackerNews *feeds.Feed
 	cryptoFeed *feeds.CryptoFeed
 	reddit     *feeds.Feed
@@ -168,10 +165,6 @@ func (b *Telegram) handleMessages(ctx context.Context) error {
 			b.handleCommand(ctx, update)
 			return nil
 		}
-		b.chatGPT.ProcessPrompt(ctx, commands.Content{
-			Text:     update.Message.Text,
-			ThreadId: update.Message.MessageThreadID,
-		})
 		return nil
 	})
 }
@@ -217,8 +210,6 @@ func (b *Telegram) handleCommand(ctx context.Context, update *models.Update) {
 func (b *Telegram) initFeeds(ctx run.Context, cfg TelegramConfig) {
 	logger := b.logger.Named("feeds")
 
-	b.chatGPT = feeds.NewChatGPT(b.logger.Named("chat-gpt"), b.contentPublisher, cfg.ChatGPTApiKey, cfg.ChatGPTUserName)
-
 	b.hackerNews = feeds.New(
 		logger,
 		b.contentPublisher,
@@ -248,7 +239,6 @@ func (b *Telegram) initFeeds(ctx run.Context, cfg TelegramConfig) {
 	b.scrapper = scrapper.New(b.logger.Named("scrapper"), b.contentPublisher, b.db)
 
 	ctx.Start(b.hackerNews)
-	ctx.Start(b.chatGPT)
 	ctx.Start(b.cryptoFeed)
 	ctx.Start(b.reddit)
 	ctx.Start(b.rss)

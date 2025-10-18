@@ -13,16 +13,14 @@ import (
 )
 
 type Config struct {
-	RedisURI        string
-	ChatId          int
-	TelegramApiKey  string
-	DiscordApiKey   string
-	ChatGPTApiKey   string
-	ChatGPTUserName string
-	RedditClientId  string
-	RedditApiKey    string
-	RedditUsername  string
-	RedditPassword  string
+	RedisURI       string
+	ChatId         int
+	TelegramApiKey string
+	DiscordApiKey  string
+	RedditClientId string
+	RedditApiKey   string
+	RedditUsername string
+	RedditPassword string
 }
 
 func main() {
@@ -45,13 +43,11 @@ func main() {
 			logger.Named("discord-bot"),
 			db.NewRedis(cfg.RedisURI),
 			bot.DiscordConfig{
-				DiscordApiKey:   cfg.DiscordApiKey,
-				ChatGPTApiKey:   cfg.ChatGPTApiKey,
-				ChatGPTUserName: cfg.ChatGPTUserName,
-				RedditClientId:  cfg.RedditClientId,
-				RedditApiKey:    cfg.RedditApiKey,
-				RedditUsername:  cfg.RedditUsername,
-				RedditPassword:  cfg.RedditPassword,
+				DiscordApiKey:  cfg.DiscordApiKey,
+				RedditClientId: cfg.RedditClientId,
+				RedditApiKey:   cfg.RedditApiKey,
+				RedditUsername: cfg.RedditUsername,
+				RedditPassword: cfg.RedditPassword,
 			},
 		)
 		ctx.Start(discordBot)
@@ -60,14 +56,12 @@ func main() {
 			logger.Named("telegram-bot"),
 			db.NewRedis(cfg.RedisURI),
 			bot.TelegramConfig{
-				TelegramApiKey:  cfg.TelegramApiKey,
-				ChatId:          cfg.ChatId,
-				ChatGPTApiKey:   cfg.ChatGPTApiKey,
-				ChatGPTUserName: cfg.ChatGPTUserName,
-				RedditClientId:  cfg.RedditClientId,
-				RedditApiKey:    cfg.RedditApiKey,
-				RedditUsername:  cfg.RedditUsername,
-				RedditPassword:  cfg.RedditPassword,
+				TelegramApiKey: cfg.TelegramApiKey,
+				ChatId:         cfg.ChatId,
+				RedditClientId: cfg.RedditClientId,
+				RedditApiKey:   cfg.RedditApiKey,
+				RedditUsername: cfg.RedditUsername,
+				RedditPassword: cfg.RedditPassword,
 			},
 		)
 		ctx.Start(telegramBot)
@@ -103,18 +97,6 @@ func decodeEnv() (*Config, error) {
 		return nil, err
 	}
 	cfg.DiscordApiKey = discordApiKey
-
-	chatGPTApiKey, err := lookupEnv("CHATGPT_API_KEY")
-	if err != nil {
-		return nil, err
-	}
-	cfg.ChatGPTApiKey = chatGPTApiKey
-
-	chatGPTUserName, err := lookupEnv("CHATGPT_USER_NAME")
-	if err != nil {
-		return nil, err
-	}
-	cfg.ChatGPTUserName = chatGPTUserName
 
 	redditClientId, err := lookupEnv("REDDIT_CLIENT_ID")
 	if err != nil {

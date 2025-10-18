@@ -14,7 +14,6 @@ require (
 	github.com/json-iterator/go v1.1.12
 	github.com/mmcdole/gofeed v1.2.1
 	github.com/prometheus/client_golang v1.19.1
-	github.com/sashabaranov/go-gpt3 v0.0.0-20230112080207-81b5788cd68e
 	github.com/stretchr/testify v1.9.0
 	github.com/turnage/graw v0.0.0-20201204201853-a177df1b5c91
 	github.com/uptrace/opentelemetry-go-extra/otelzap v0.2.3
