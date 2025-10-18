@@ -33,6 +33,14 @@ func ValueOrDefault[T any](value *T, defaultValue T) T {
 	return *value
 }
 
+func DefaultIfZero[T comparable](value T, defaultValue T) T {
+	var zero T
+	if value == zero {
+		return defaultValue
+	}
+	return value
+}
+
 func FirstNonNil[T any](values ...*T) *T {
 	for _, v := range values {
 		if v != nil {
