@@ -17,6 +17,7 @@ import (
 	"github.com/camopy/rss_everything/bot/commands"
 	"github.com/camopy/rss_everything/bot/feeds"
 	"github.com/camopy/rss_everything/bot/feeds/hacker_news"
+	"github.com/camopy/rss_everything/bot/feeds/reddit"
 	"github.com/camopy/rss_everything/bot/feeds/scrapper"
 	"github.com/camopy/rss_everything/db"
 	"github.com/camopy/rss_everything/util/psub"
@@ -43,7 +44,7 @@ type Discord struct {
 	chatGPT    *feeds.ChatGPT
 	hackerNews *feeds.Feed
 	cryptoFeed *feeds.CryptoFeed
-	reddit     *feeds.Reddit
+	reddit     *feeds.Feed
 	rss        *feeds.RSS
 	scrapper   *scrapper.Scrapper
 
@@ -225,8 +226,22 @@ func (b *Discord) initFeeds(ctx run.Context, cfg DiscordConfig) {
 			b.db,
 		),
 	)
+
+	b.reddit = feeds.New(
+		logger,
+		b.contentPublisher,
+		b.db,
+		reddit.New(
+			logger.Named("reddit"),
+			b.db,
+			cfg.RedditClientId,
+			cfg.RedditApiKey,
+			cfg.RedditUsername,
+			cfg.RedditPassword,
+		),
+	)
+
 	//b.cryptoFeed = feeds.NewCryptoFeed(b.logger.Named("crypto"), b.contentPublisher, cryptoThreadId)
-	b.reddit = feeds.NewReddit(b.logger.Named("reddit"), b.contentPublisher, b.db, cfg.RedditClientId, cfg.RedditApiKey, cfg.RedditUsername, cfg.RedditPassword)
 	b.rss = feeds.NewRSS(b.logger.Named("rss"), b.contentPublisher, b.db)
 	b.scrapper = scrapper.New(b.logger.Named("scrapper"), b.contentPublisher, b.db)
 
