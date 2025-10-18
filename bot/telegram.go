@@ -15,6 +15,7 @@ import (
 	"github.com/camopy/rss_everything/bot/feeds"
 	"github.com/camopy/rss_everything/bot/feeds/hacker_news"
 	"github.com/camopy/rss_everything/bot/feeds/reddit"
+	"github.com/camopy/rss_everything/bot/feeds/rss"
 	"github.com/camopy/rss_everything/bot/feeds/scrapper"
 	"github.com/camopy/rss_everything/db"
 	"github.com/camopy/rss_everything/util/psub"
@@ -45,7 +46,7 @@ type Telegram struct {
 	hackerNews *feeds.Feed
 	cryptoFeed *feeds.CryptoFeed
 	reddit     *feeds.Feed
-	rss        *feeds.RSS
+	rss        *feeds.Feed
 	scrapper   *scrapper.Scrapper
 
 	telegramSubscriber psub.Subscriber[*models.Update]
@@ -234,8 +235,17 @@ func (b *Telegram) initFeeds(ctx run.Context, cfg TelegramConfig) {
 		),
 	)
 
+	b.rss = feeds.New(
+		logger,
+		b.contentPublisher,
+		b.db,
+		rss.New(
+			logger.Named("rss"),
+			b.db,
+		),
+	)
+
 	b.cryptoFeed = feeds.NewCryptoFeed(b.logger.Named("crypto"), b.contentPublisher, cryptoThreadId)
-	b.rss = feeds.NewRSS(b.logger.Named("rss"), b.contentPublisher, b.db)
 	b.scrapper = scrapper.New(b.logger.Named("scrapper"), b.contentPublisher, b.db)
 
 	ctx.Start(b.hackerNews)

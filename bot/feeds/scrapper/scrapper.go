@@ -150,7 +150,7 @@ func (u *Scrapper) add(ctx context.Context, c *scrapperCommand) error {
 		Interval: c.interval,
 		ThreadId: c.threadId,
 	}
-	if err := u.saveSubscription(ctx, sub); err != nil {
+	if err := u.saveSubscription(ctx, &sub); err != nil {
 		return err
 	}
 	u.addSubscription(&sub)
@@ -165,12 +165,12 @@ func (u *Scrapper) add(ctx context.Context, c *scrapperCommand) error {
 	return nil
 }
 
-func (u *Scrapper) saveSubscription(ctx context.Context, sub subscription) error {
+func (u *Scrapper) saveSubscription(ctx context.Context, sub *subscription) error {
 	b, err := json.Marshal(sub)
 	if err != nil {
 		return err
 	}
-	err = u.db.Add(ctx, scrapperSubscriptionsTable, b)
+	sub.Id, err = u.db.Add(ctx, scrapperSubscriptionsTable, b)
 	if err != nil {
 		return err
 	}

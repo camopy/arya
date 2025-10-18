@@ -78,7 +78,6 @@ type hackerNewsCommand struct {
 	action   string
 	subName  string
 	interval time.Duration
-	args     []string
 }
 
 func (c hackerNewsCommand) ThreadId() int {
@@ -95,6 +94,10 @@ func (c hackerNewsCommand) SubName() string {
 
 func (c hackerNewsCommand) Interval() time.Duration {
 	return c.interval
+}
+
+func (c hackerNewsCommand) Url() string {
+	return ""
 }
 
 func (h *HackerNews) ParseCommand(cmd commands.Command) (feeds.Command, error) {

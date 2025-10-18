@@ -32,6 +32,7 @@ type Command interface {
 	Interval() time.Duration
 	ThreadId() int
 	SubName() string
+	Url() string
 }
 
 type Feed struct {
@@ -48,6 +49,7 @@ type Subscription struct {
 	Name     string        `json:"name"`
 	Interval time.Duration `json:"interval"`
 	ThreadId int           `json:"thread_id"`
+	Url      string        `json:"url"`
 
 	cancelFunc context.CancelFunc
 }
@@ -111,11 +113,11 @@ func (h *Feed) add(ctx context.Context, c Command) error {
 		Name:     c.SubName(),
 		Interval: ge.DefaultIfZero(c.Interval(), defaultFetchInterval),
 		ThreadId: c.ThreadId(),
+		Url:      c.Url(),
 	}
-	if err := h.saveSubscription(ctx, sub); err != nil {
+	if err := h.saveSubscription(ctx, &sub); err != nil {
 		return err
 	}
-	h.addSubscription(&sub)
 	h.logger.Info(
 		"subscription added",
 		zap.String("feed", h.feeder.Name()),
@@ -127,15 +129,16 @@ func (h *Feed) add(ctx context.Context, c Command) error {
 	return nil
 }
 
-func (h *Feed) saveSubscription(ctx context.Context, sub Subscription) error {
+func (h *Feed) saveSubscription(ctx context.Context, sub *Subscription) error {
 	b, err := json.Marshal(sub)
 	if err != nil {
 		return err
 	}
-	err = h.db.Add(ctx, h.feeder.TableName(), b)
+	sub.Id, err = h.db.Add(ctx, h.feeder.TableName(), b)
 	if err != nil {
 		return err
 	}
+	h.addSubscription(sub)
 	return nil
 }
 

@@ -65,7 +65,6 @@ type redditCommand struct {
 	action    string
 	subreddit string
 	interval  time.Duration
-	args      []string
 }
 
 func (r redditCommand) Action() string {
@@ -82,6 +81,10 @@ func (r redditCommand) ThreadId() int {
 
 func (r redditCommand) SubName() string {
 	return r.subreddit
+}
+
+func (r redditCommand) Url() string {
+	return ""
 }
 
 func (r *Reddit) ParseCommand(cmd commands.Command) (feeds.Command, error) {
@@ -104,10 +107,6 @@ func (r *Reddit) ParseCommand(cmd commands.Command) (feeds.Command, error) {
 
 			if c.interval.Minutes() < 60 {
 				return nil, commands.ErrInvalidIntervalDuration
-			}
-
-			if len(s) > 3 {
-				c.args = s[3:]
 			}
 		}
 	}

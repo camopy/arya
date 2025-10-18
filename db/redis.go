@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-redis/redis/v9"
+	"github.com/google/uuid"
 )
 
 type Redis struct {
@@ -36,8 +37,9 @@ func (r *Redis) Set(ctx context.Context, key string, value []byte, ttl time.Dura
 	return r.client.Set(ctx, key, value, ttl).Err()
 }
 
-func (r *Redis) Add(ctx context.Context, key string, value []byte) error {
-	return r.client.HSet(ctx, key, time.Now().Unix(), value).Err()
+func (r *Redis) Add(ctx context.Context, key string, value []byte) (id string, err error) {
+	id = uuid.New().String()
+	return id, r.client.HSet(ctx, key, id, value).Err()
 }
 
 func (r *Redis) List(ctx context.Context, key string) (map[string]string, error) {
