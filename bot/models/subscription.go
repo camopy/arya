@@ -13,5 +13,5 @@ type Subscription struct {
 	Platform string        `json:"platform"`
 	Url      string        `json:"url"`
 
-	CancelFunc context.CancelFunc
+	CancelFunc context.CancelFunc `json:"-"`
 }
