@@ -11,7 +11,7 @@ import (
 	"github.com/imroc/req/v3"
 	"go.uber.org/zap"
 
-	"github.com/camopy/rss_everything/bot/commands"
+	"github.com/camopy/rss_everything/bot/models"
 	"github.com/camopy/rss_everything/db"
 	"github.com/camopy/rss_everything/zaplog"
 )
@@ -45,7 +45,7 @@ func (z zapImovel) String() string {
 %s`, z.Title, z.Location, z.Price, z.Image, z.Link)
 }
 
-func (z *ZapImoveis) scrap(ctx context.Context, threadId int, url string) ([]commands.Content, error) {
+func (z *ZapImoveis) scrap(ctx context.Context, threadId int, url string) ([]models.Content, error) {
 	fakeChrome := req.DefaultClient().ImpersonateChrome()
 
 	c := colly.NewCollector(func(collector *colly.Collector) {
@@ -117,10 +117,10 @@ func (z *ZapImoveis) scrap(ctx context.Context, threadId int, url string) ([]com
 	return parseZapImoveis(threadId, items), nil
 }
 
-func parseZapImoveis(threadId int, items []zapImovel) []commands.Content {
-	content := make([]commands.Content, 0, len(items))
+func parseZapImoveis(threadId int, items []zapImovel) []models.Content {
+	content := make([]models.Content, 0, len(items))
 	for _, item := range items {
-		content = append(content, commands.Content{
+		content = append(content, models.Content{
 			ThreadId: threadId,
 			Text:     item.String(),
 		})

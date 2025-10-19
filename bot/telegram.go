@@ -8,15 +8,15 @@ import (
 
 	"github.com/avast/retry-go/v4"
 	"github.com/go-telegram/bot"
-	"github.com/go-telegram/bot/models"
+	tmodels "github.com/go-telegram/bot/models"
 	"go.uber.org/zap"
 
-	"github.com/camopy/rss_everything/bot/commands"
 	"github.com/camopy/rss_everything/bot/feeder"
 	"github.com/camopy/rss_everything/bot/feeder/hacker_news"
 	"github.com/camopy/rss_everything/bot/feeder/reddit"
 	"github.com/camopy/rss_everything/bot/feeder/rss"
 	"github.com/camopy/rss_everything/bot/feeder/scrapper"
+	"github.com/camopy/rss_everything/bot/models"
 	"github.com/camopy/rss_everything/db"
 	"github.com/camopy/rss_everything/util/psub"
 	"github.com/camopy/rss_everything/util/run"
@@ -47,24 +47,24 @@ type Telegram struct {
 	rss        *feeder.Feed
 	scrapper   *feeder.Feed
 
-	telegramSubscriber psub.Subscriber[*models.Update]
-	telegramPublisher  psub.Publisher[*models.Update]
-	contentSubscriber  psub.Subscriber[[]commands.Content]
-	contentPublisher   psub.Publisher[[]commands.Content]
+	telegramSubscriber psub.Subscriber[*tmodels.Update]
+	telegramPublisher  psub.Publisher[*tmodels.Update]
+	contentSubscriber  psub.Subscriber[[]models.Content]
+	contentPublisher   psub.Publisher[[]models.Content]
 }
 
 func NewTelegramBot(logger *zaplog.Logger, db db.DB, cfg TelegramConfig) *Telegram {
-	telegramSubscriber, telegramPublisher := psub.NewSubscriber[*models.Update](
+	telegramSubscriber, telegramPublisher := psub.NewSubscriber[*tmodels.Update](
 		psub.WithSubscriberName("telegram-updates"),
 		psub.WithSubscriberSubscriptionOptions(psub.WithSubscriptionBlocking(true)),
 	)
 
-	contentSubscriber, contentPublisher := psub.NewSubscriber[[]commands.Content](
+	contentSubscriber, contentPublisher := psub.NewSubscriber[[]models.Content](
 		psub.WithSubscriberName("content-updates"),
 		psub.WithSubscriberSubscriptionOptions(psub.WithSubscriptionBlocking(true)),
 	)
 
-	handler := func(ctx context.Context, b *bot.Bot, update *models.Update) {
+	handler := func(ctx context.Context, b *bot.Bot, update *tmodels.Update) {
 		if update.Message == nil {
 			return
 		}
@@ -106,7 +106,7 @@ func (b *Telegram) Start(ctx run.Context) error {
 }
 
 func (b *Telegram) handleContentUpdates(ctx context.Context) error {
-	return psub.ProcessWithContext(ctx, b.contentSubscriber.Subscribe(ctx), func(ctx context.Context, contents []commands.Content) error {
+	return psub.ProcessWithContext(ctx, b.contentSubscriber.Subscribe(ctx), func(ctx context.Context, contents []models.Content) error {
 		for _, c := range contents {
 			attempt := 0
 			err := retry.Do(
@@ -142,7 +142,7 @@ func (b *Telegram) handleContentUpdates(ctx context.Context) error {
 }
 
 func (b *Telegram) handleMessages(ctx context.Context) error {
-	isCommand := func(m *models.Message) bool {
+	isCommand := func(m *tmodels.Message) bool {
 		if m.Entities == nil || len(m.Entities) == 0 {
 			return false
 		}
@@ -150,7 +150,7 @@ func (b *Telegram) handleMessages(ctx context.Context) error {
 		return entity.Offset == 0 && entity.Type == "bot_command"
 	}
 
-	return psub.ProcessWithContext(ctx, b.telegramSubscriber.Subscribe(ctx), func(ctx context.Context, update *models.Update) error {
+	return psub.ProcessWithContext(ctx, b.telegramSubscriber.Subscribe(ctx), func(ctx context.Context, update *tmodels.Update) error {
 		b.logger.Info(
 			"message received",
 			zap.Int("threadId", update.Message.MessageThreadID),
@@ -172,10 +172,10 @@ func (b *Telegram) isValidChatId(id int64) bool {
 	return id == int64(b.cfg.ChatId)
 }
 
-func (b *Telegram) handleCommand(ctx context.Context, update *models.Update) {
+func (b *Telegram) handleCommand(ctx context.Context, update *tmodels.Update) {
 	b.logger.Info("command received", zap.String("cmd", update.Message.Text))
 	entity := update.Message.Entities[0]
-	cmd := commands.Command{
+	cmd := models.Command{
 		Name:     update.Message.Text[:entity.Length],
 		ChatId:   update.Message.Chat.ID,
 		ThreadId: update.Message.MessageThreadID,

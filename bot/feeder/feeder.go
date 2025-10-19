@@ -9,7 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/camopy/rss_everything/bot/commands"
+	"github.com/camopy/rss_everything/bot/models"
 	"github.com/camopy/rss_everything/db"
 	ge "github.com/camopy/rss_everything/util/generics"
 	"github.com/camopy/rss_everything/util/psub"
@@ -23,45 +23,25 @@ type Feeder interface {
 	Name() string
 	TableName() string
 
-	Fetch(ctx context.Context, sub *Subscription) ([]commands.Content, error)
-	ParseCommand(cmd commands.Command) (Command, error)
-}
-
-type Command interface {
-	Action() string
-	Interval() time.Duration
-	ThreadId() int
-	SubName() string
-	Platform() string
-	Url() string
+	Fetch(ctx context.Context, sub *models.Subscription) ([]models.Content, error)
+	ParseCommand(cmd models.Command) (models.Commander, error)
 }
 
 type Feed struct {
 	feeder        Feeder
 	logger        *zaplog.Logger
 	db            db.DB
-	subscriptions map[string]*Subscription
+	subscriptions map[string]*models.Subscription
 
-	contentPublisher psub.Publisher[[]commands.Content]
+	contentPublisher psub.Publisher[[]models.Content]
 }
 
-type Subscription struct {
-	Id       string        `json:"id"`
-	Name     string        `json:"name"`
-	Interval time.Duration `json:"interval"`
-	ThreadId int           `json:"thread_id"`
-	Platform string        `json:"platform"`
-	Url      string        `json:"url"`
-
-	cancelFunc context.CancelFunc
-}
-
-func New(logger *zaplog.Logger, contentPublisher psub.Publisher[[]commands.Content], db db.DB, feeder Feeder) *Feed {
+func New(logger *zaplog.Logger, contentPublisher psub.Publisher[[]models.Content], db db.DB, feeder Feeder) *Feed {
 	return &Feed{
 		feeder:        feeder,
 		logger:        logger,
 		db:            db,
-		subscriptions: make(map[string]*Subscription),
+		subscriptions: make(map[string]*models.Subscription),
 
 		contentPublisher: contentPublisher,
 	}
@@ -87,7 +67,7 @@ func (h *Feed) Start(ctx run.Context) error {
 	return nil
 }
 
-func (h *Feed) HandleCommand(ctx context.Context, cmd commands.Command) error {
+func (h *Feed) HandleCommand(ctx context.Context, cmd models.Command) error {
 	c, err := h.feeder.ParseCommand(cmd)
 	if err != nil {
 		return err
@@ -103,7 +83,7 @@ func (h *Feed) HandleCommand(ctx context.Context, cmd commands.Command) error {
 	return err
 }
 
-func (h *Feed) add(ctx context.Context, c Command) error {
+func (h *Feed) add(ctx context.Context, c models.Commander) error {
 	h.logger.Info(
 		"adding subscription",
 		zap.String("feed", h.feeder.Name()),
@@ -111,7 +91,7 @@ func (h *Feed) add(ctx context.Context, c Command) error {
 		zap.Int("threadId", c.ThreadId()),
 	)
 
-	sub := Subscription{
+	sub := models.Subscription{
 		Name:     c.SubName(),
 		Interval: ge.DefaultIfZero(c.Interval(), defaultFetchInterval),
 		ThreadId: c.ThreadId(),
@@ -132,7 +112,7 @@ func (h *Feed) add(ctx context.Context, c Command) error {
 	return nil
 }
 
-func (h *Feed) saveSubscription(ctx context.Context, sub *Subscription) error {
+func (h *Feed) saveSubscription(ctx context.Context, sub *models.Subscription) error {
 	b, err := json.Marshal(sub)
 	if err != nil {
 		return err
@@ -145,12 +125,12 @@ func (h *Feed) saveSubscription(ctx context.Context, sub *Subscription) error {
 	return nil
 }
 
-func (h *Feed) list(ctx context.Context, c Command) error {
+func (h *Feed) list(ctx context.Context, c models.Commander) error {
 	h.logger.Info("listing subscriptions", zap.Int("threadId", c.ThreadId()))
 
 	if len(h.subscriptions) == 0 {
 		h.logger.Info("no subscriptions")
-		return h.contentPublisher.SendData(ctx, []commands.Content{
+		return h.contentPublisher.SendData(ctx, []models.Content{
 			{
 				ThreadId: c.ThreadId(),
 				Text:     "No subscriptions",
@@ -173,22 +153,22 @@ func (h *Feed) list(ctx context.Context, c Command) error {
 		messages = append(messages, msg)
 	}
 
-	return h.contentPublisher.SendData(ctx, ge.Map(messages, func(message string) commands.Content {
-		return commands.Content{
+	return h.contentPublisher.SendData(ctx, ge.Map(messages, func(message string) models.Content {
+		return models.Content{
 			Text:     message,
 			ThreadId: c.ThreadId(),
 		}
 	}))
 }
 
-func (h *Feed) getSubscriptions(ctx context.Context) ([]Subscription, error) {
+func (h *Feed) getSubscriptions(ctx context.Context) ([]models.Subscription, error) {
 	b, err := h.db.List(ctx, h.feeder.TableName())
 	if err != nil {
 		return nil, err
 	}
-	var subs []Subscription
+	var subs []models.Subscription
 	for id, v := range b {
-		var sub Subscription
+		var sub models.Subscription
 		err = json.Unmarshal([]byte(v), &sub)
 		if err != nil {
 			return nil, err
@@ -199,7 +179,7 @@ func (h *Feed) getSubscriptions(ctx context.Context) ([]Subscription, error) {
 	return subs, nil
 }
 
-func (h *Feed) remove(ctx context.Context, cmd Command) error {
+func (h *Feed) remove(ctx context.Context, cmd models.Commander) error {
 	h.logger.Info(
 		"removing subscription",
 		zap.String("feed", h.feeder.Name()),
@@ -207,7 +187,7 @@ func (h *Feed) remove(ctx context.Context, cmd Command) error {
 		zap.Int("threadId", cmd.ThreadId()),
 	)
 	if err := h.removeSubscription(ctx, cmd); err != nil {
-		return h.contentPublisher.SendData(ctx, []commands.Content{
+		return h.contentPublisher.SendData(ctx, []models.Content{
 			{
 				ThreadId: cmd.ThreadId(),
 				Text:     err.Error(),
@@ -217,7 +197,7 @@ func (h *Feed) remove(ctx context.Context, cmd Command) error {
 	return nil
 }
 
-func (h *Feed) removeSubscription(ctx context.Context, cmd Command) error {
+func (h *Feed) removeSubscription(ctx context.Context, cmd models.Commander) error {
 	sub := h.findSubscription(cmd.SubName())
 	if sub == nil {
 		return fmt.Errorf("%s: subscription %s not found", h.feeder.Name(), cmd.SubName())
@@ -228,7 +208,7 @@ func (h *Feed) removeSubscription(ctx context.Context, cmd Command) error {
 		return err
 	}
 	delete(h.subscriptions, cmd.SubName())
-	sub.cancelFunc()
+	sub.CancelFunc()
 
 	h.logger.Info(
 		"subscription removed",
@@ -236,7 +216,7 @@ func (h *Feed) removeSubscription(ctx context.Context, cmd Command) error {
 		zap.String("name", cmd.SubName()),
 		zap.Int("threadId", cmd.ThreadId()),
 	)
-	return h.contentPublisher.SendData(ctx, []commands.Content{
+	return h.contentPublisher.SendData(ctx, []models.Content{
 		{
 			ThreadId: cmd.ThreadId(),
 			Text:     fmt.Sprintf("%s: removed %s", h.feeder.Name(), cmd.SubName()),
@@ -244,30 +224,30 @@ func (h *Feed) removeSubscription(ctx context.Context, cmd Command) error {
 	})
 }
 
-func (h *Feed) addSubscription(sub *Subscription) {
+func (h *Feed) addSubscription(sub *models.Subscription) {
 	key := strings.ToLower(sub.Name)
 	h.subscriptions[key] = sub
 }
 
-func (h *Feed) findSubscription(name string) *Subscription {
+func (h *Feed) findSubscription(name string) *models.Subscription {
 	key := strings.ToLower(name)
 	return h.subscriptions[key]
 }
 
-func (h *Feed) pollFeed(ctx context.Context, sub *Subscription) {
+func (h *Feed) pollFeed(ctx context.Context, sub *models.Subscription) {
 	ctx, cancel := context.WithCancel(ctx)
-	sub.cancelFunc = cancel
+	sub.CancelFunc = cancel
 	go h.poll(ctx, sub)
 }
 
-func (h *Feed) poll(ctx context.Context, sub *Subscription) {
+func (h *Feed) poll(ctx context.Context, sub *models.Subscription) {
 	h.logger.Info(
 		"polling",
 		zap.String("feed", h.feeder.Name()),
 		zap.String("name", sub.Name),
 		zap.Int("threadId", sub.ThreadId),
 	)
-	fetch := func(ctx context.Context, sub *Subscription) {
+	fetch := func(ctx context.Context, sub *models.Subscription) {
 		stories, err := h.feeder.Fetch(ctx, sub)
 		if err != nil {
 			h.logger.Error("error fetching contents", zap.Error(err))

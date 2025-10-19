@@ -9,8 +9,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/camopy/rss_everything/bot/commands"
 	"github.com/camopy/rss_everything/bot/feeder"
+	"github.com/camopy/rss_everything/bot/models"
 	"github.com/camopy/rss_everything/db"
 	"github.com/camopy/rss_everything/zaplog"
 )
@@ -74,7 +74,7 @@ func (s scrapperCommand) Url() string {
 	return s.url
 }
 
-func (u *Scrapper) ParseCommand(cmd commands.Command) (feeder.Command, error) {
+func (u *Scrapper) ParseCommand(cmd models.Command) (models.Commander, error) {
 	s := strings.Split(cmd.Text, " ")
 
 	switch s[0] {
@@ -128,13 +128,13 @@ func parseAddCommand(threadId int, s []string) (*scrapperCommand, error) {
 	c.interval = time.Duration(interval) * time.Minute
 
 	if c.interval.Minutes() < 60 {
-		return nil, commands.ErrInvalidIntervalDuration
+		return nil, models.ErrInvalidIntervalDuration
 	}
 
 	return c, nil
 }
 
-func (u *Scrapper) Fetch(ctx context.Context, sub *feeder.Subscription) ([]commands.Content, error) {
+func (u *Scrapper) Fetch(ctx context.Context, sub *models.Subscription) ([]models.Content, error) {
 	u.logger.Info("scrapping", zap.String("url", sub.Url), zap.Int("threadId", sub.ThreadId))
 	switch sub.Platform {
 	case OlxPlatform:

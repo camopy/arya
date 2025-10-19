@@ -12,8 +12,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 
-	"github.com/camopy/rss_everything/bot/commands"
 	"github.com/camopy/rss_everything/bot/feeder"
+	"github.com/camopy/rss_everything/bot/models"
 	"github.com/camopy/rss_everything/db"
 	"github.com/camopy/rss_everything/metrics"
 	"github.com/camopy/rss_everything/zaplog"
@@ -104,7 +104,7 @@ func (c hackerNewsCommand) Url() string {
 	return ""
 }
 
-func (h *HackerNews) ParseCommand(cmd commands.Command) (feeder.Command, error) {
+func (h *HackerNews) ParseCommand(cmd models.Command) (models.Commander, error) {
 	s := strings.Split(cmd.Text, " ")
 
 	c := &hackerNewsCommand{
@@ -119,13 +119,13 @@ func (h *HackerNews) ParseCommand(cmd commands.Command) (feeder.Command, error) 
 	return c, nil
 }
 
-func (h *HackerNews) Fetch(ctx context.Context, sub *feeder.Subscription) ([]commands.Content, error) {
+func (h *HackerNews) Fetch(ctx context.Context, sub *models.Subscription) ([]models.Content, error) {
 	h.logger.Info("fetching hacker news")
 	ids, err := h.fetchTopStoriesIds()
 	if err != nil {
 		return nil, err
 	}
-	stories := make([]commands.Content, 0, topStoriesLimit)
+	stories := make([]models.Content, 0, topStoriesLimit)
 	i := 0
 	for i < len(ids) && i < topStoriesLimit {
 		id := ids[i]
@@ -152,7 +152,7 @@ func (h *HackerNews) Fetch(ctx context.Context, sub *feeder.Subscription) ([]com
 			return nil, err
 		}
 		h.logger.Info("saved story", zap.String("title", story.Title))
-		stories = append(stories, commands.Content{
+		stories = append(stories, models.Content{
 			Text:     s,
 			ThreadId: sub.ThreadId,
 		})

@@ -14,12 +14,12 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"go.uber.org/zap"
 
-	"github.com/camopy/rss_everything/bot/commands"
 	"github.com/camopy/rss_everything/bot/feeder"
 	"github.com/camopy/rss_everything/bot/feeder/hacker_news"
 	"github.com/camopy/rss_everything/bot/feeder/reddit"
 	"github.com/camopy/rss_everything/bot/feeder/rss"
 	"github.com/camopy/rss_everything/bot/feeder/scrapper"
+	"github.com/camopy/rss_everything/bot/models"
 	"github.com/camopy/rss_everything/db"
 	"github.com/camopy/rss_everything/util/psub"
 	"github.com/camopy/rss_everything/util/run"
@@ -47,8 +47,8 @@ type Discord struct {
 
 	discordSubscriber psub.Subscriber[*discordgo.MessageCreate]
 	discordPublisher  psub.Publisher[*discordgo.MessageCreate]
-	contentSubscriber psub.Subscriber[[]commands.Content]
-	contentPublisher  psub.Publisher[[]commands.Content]
+	contentSubscriber psub.Subscriber[[]models.Content]
+	contentPublisher  psub.Publisher[[]models.Content]
 }
 
 func NewDiscordBot(logger *zaplog.Logger, db db.DB, cfg DiscordConfig) *Discord {
@@ -57,7 +57,7 @@ func NewDiscordBot(logger *zaplog.Logger, db db.DB, cfg DiscordConfig) *Discord 
 		psub.WithSubscriberSubscriptionOptions(psub.WithSubscriptionBlocking(true)),
 	)
 
-	contentSubscriber, contentPublisher := psub.NewSubscriber[[]commands.Content](
+	contentSubscriber, contentPublisher := psub.NewSubscriber[[]models.Content](
 		psub.WithSubscriberName("content-updates"),
 		psub.WithSubscriberSubscriptionOptions(psub.WithSubscriptionBlocking(true)),
 	)
@@ -121,7 +121,7 @@ func (b *Discord) handleContentUpdates(ctx context.Context) error {
 		var rateLimitError *discordgo.RateLimitError
 		return errors.As(err, &rateLimitError)
 	}
-	return psub.ProcessWithContext(ctx, b.contentSubscriber.Subscribe(ctx), func(ctx context.Context, contents []commands.Content) error {
+	return psub.ProcessWithContext(ctx, b.contentSubscriber.Subscribe(ctx), func(ctx context.Context, contents []models.Content) error {
 		for _, c := range contents {
 			attempt := 0
 			err := retry.Do(
@@ -182,7 +182,7 @@ func (b *Discord) handleCommand(ctx context.Context, update *discordgo.MessageCr
 		return
 	}
 	name := strings.Split(update.Message.Content, " ")[0]
-	cmd := commands.Command{
+	cmd := models.Command{
 		Name:     name,
 		ThreadId: threadId,
 		Text:     update.Message.Content[len(name)+1:],

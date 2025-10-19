@@ -12,8 +12,8 @@ import (
 	"github.com/turnage/graw/reddit"
 	"go.uber.org/zap"
 
-	"github.com/camopy/rss_everything/bot/commands"
 	"github.com/camopy/rss_everything/bot/feeder"
+	"github.com/camopy/rss_everything/bot/models"
 	"github.com/camopy/rss_everything/db"
 	"github.com/camopy/rss_everything/zaplog"
 )
@@ -91,7 +91,7 @@ func (r redditCommand) Url() string {
 	return ""
 }
 
-func (r *Reddit) ParseCommand(cmd commands.Command) (feeder.Command, error) {
+func (r *Reddit) ParseCommand(cmd models.Command) (models.Commander, error) {
 	s := strings.Split(cmd.Text, " ")
 
 	c := &redditCommand{
@@ -110,7 +110,7 @@ func (r *Reddit) ParseCommand(cmd commands.Command) (feeder.Command, error) {
 			c.interval = time.Duration(interval) * time.Minute
 
 			if c.interval.Minutes() < 60 {
-				return nil, commands.ErrInvalidIntervalDuration
+				return nil, models.ErrInvalidIntervalDuration
 			}
 		}
 	}
@@ -118,7 +118,7 @@ func (r *Reddit) ParseCommand(cmd commands.Command) (feeder.Command, error) {
 	return c, nil
 }
 
-func (r *Reddit) Fetch(ctx context.Context, sub *feeder.Subscription) ([]commands.Content, error) {
+func (r *Reddit) Fetch(ctx context.Context, sub *models.Subscription) ([]models.Content, error) {
 	r.logger.Info("fetching posts", zap.String("subreddit", sub.Name), zap.Int("threadId", sub.ThreadId))
 	harvest, err := r.client.ListingWithParams(sub.Name, map[string]string{
 		"limit": strconv.Itoa(redditFetchLimit),
@@ -126,7 +126,7 @@ func (r *Reddit) Fetch(ctx context.Context, sub *feeder.Subscription) ([]command
 	if err != nil {
 		return nil, err
 	}
-	posts := make([]commands.Content, 0, redditFetchLimit)
+	posts := make([]models.Content, 0, redditFetchLimit)
 	for _, post := range harvest.Posts {
 		p := redditPost{
 			ID:         post.ID,
@@ -152,7 +152,7 @@ func (r *Reddit) Fetch(ctx context.Context, sub *feeder.Subscription) ([]command
 
 		r.logger.Info("saved new post", zap.String("post", p.String()))
 
-		posts = append(posts, commands.Content{
+		posts = append(posts, models.Content{
 			ThreadId: sub.ThreadId,
 			Text:     p.String(),
 		})

@@ -11,8 +11,8 @@ import (
 	"github.com/mmcdole/gofeed"
 	"go.uber.org/zap"
 
-	"github.com/camopy/rss_everything/bot/commands"
 	"github.com/camopy/rss_everything/bot/feeder"
+	"github.com/camopy/rss_everything/bot/models"
 	"github.com/camopy/rss_everything/db"
 	"github.com/camopy/rss_everything/zaplog"
 )
@@ -76,7 +76,7 @@ func (r rssCommand) Url() string {
 	return r.url
 }
 
-func (u *RSS) ParseCommand(cmd commands.Command) (feeder.Command, error) {
+func (u *RSS) ParseCommand(cmd models.Command) (models.Commander, error) {
 	// /rss operation[add|remove|list] feed_title interval[m] url
 	s := strings.Split(cmd.Text, " ")
 
@@ -96,7 +96,7 @@ func (u *RSS) ParseCommand(cmd commands.Command) (feeder.Command, error) {
 			c.interval = time.Duration(interval) * time.Minute
 
 			if c.interval.Minutes() < 60 {
-				return nil, commands.ErrInvalidIntervalDuration
+				return nil, models.ErrInvalidIntervalDuration
 			}
 
 			if len(s) > 3 {
@@ -108,13 +108,13 @@ func (u *RSS) ParseCommand(cmd commands.Command) (feeder.Command, error) {
 	return c, nil
 }
 
-func (u *RSS) Fetch(ctx context.Context, sub *feeder.Subscription) ([]commands.Content, error) {
+func (u *RSS) Fetch(ctx context.Context, sub *models.Subscription) ([]models.Content, error) {
 	u.logger.Info("fetching", zap.String("url", sub.Name))
 	feed, err := u.client.ParseURLWithContext(sub.Url, ctx)
 	if err != nil {
 		return nil, err
 	}
-	posts := make([]commands.Content, 0, rssFetchLimit)
+	posts := make([]models.Content, 0, rssFetchLimit)
 	for _, post := range feed.Items {
 		p := rssPost{
 			FeedTitle:  sub.Name,
@@ -138,7 +138,7 @@ func (u *RSS) Fetch(ctx context.Context, sub *feeder.Subscription) ([]commands.C
 
 		u.logger.Info("saved new post", zap.String("post", p.Title))
 
-		posts = append(posts, commands.Content{
+		posts = append(posts, models.Content{
 			ThreadId: sub.ThreadId,
 			Text:     p.String(),
 		})
